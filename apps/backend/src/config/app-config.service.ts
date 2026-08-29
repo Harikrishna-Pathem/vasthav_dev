@@ -8,4 +8,8 @@ export class AppConfigService {
   get apiPrefix(): string { return this.config.getOrThrow<string>('app.apiPrefix'); }
   get apiVersion(): string { return this.config.getOrThrow<string>('app.apiVersion'); }
   get corsOrigins(): string[] { return this.config.getOrThrow<string[]>('app.corsOrigins'); }
+  get accessTokenSecret(): string { return this.config.getOrThrow<string>('auth.accessSecret'); }
+  get refreshTokenSecret(): string { return this.config.getOrThrow<string>('auth.refreshSecret'); }
+  get accessTokenTtl(): string { return this.config.getOrThrow<string>('auth.accessTtl'); }
+  get refreshTokenTtl(): string { return this.config.getOrThrow<string>('auth.refreshTtl'); }
 }

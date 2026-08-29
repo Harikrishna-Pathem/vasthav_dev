@@ -8,6 +8,12 @@ export const configuration = () => ({
     apiVersion: process.env.API_VERSION ?? 'v1',
     corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173').split(','),
   },
+  auth: {
+    accessSecret: process.env.JWT_ACCESS_SECRET,
+    refreshSecret: process.env.JWT_REFRESH_SECRET,
+    accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
+    refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
+  },
 });
 
 export function validateEnvironment(config: Record<string, unknown>): Record<string, unknown> {
@@ -18,7 +24,10 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
     API_VERSION: Joi.string().default('v1'),
     CORS_ORIGINS: Joi.string().required(),
     DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
-    JWT_ACCESS_SECRET: Joi.string().min(32).when('NODE_ENV', { is: 'production', then: Joi.required(), otherwise: Joi.optional() }),
+    JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+    JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+    JWT_ACCESS_TTL: Joi.string().default('15m'),
+    JWT_REFRESH_TTL: Joi.string().default('30d'),
     LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   }).unknown(true);
   const { error, value } = schema.validate(config, { abortEarly: false });
