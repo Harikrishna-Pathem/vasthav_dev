@@ -8,6 +8,8 @@ import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
+import { SurveysModule } from './surveys/surveys.module.js';
+import { QuestionsModule } from './questions/questions.module.js';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { UsersModule } from './users/users.module.js';
     HealthModule,
     AuthModule,
     UsersModule,
+    SurveysModule,
+    QuestionsModule,
   ],
   providers: [AppConfigService],
 })

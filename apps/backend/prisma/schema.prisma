@@ -32,6 +32,35 @@ enum UserLanguage {
   hi
 }
 
+enum SurveyStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  IMAGE
+  VIDEO
+  FILE
+}
+
+enum QuestionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionOptionStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   email             String         @unique @db.VarChar(320)
@@ -44,6 +73,10 @@ model User {
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz(6)
   refreshTokens     RefreshToken[]
+  surveysCreated    Survey[]       @relation("SurveyCreatedBy")
+  surveysUpdated    Survey[]       @relation("SurveyUpdatedBy")
+  questionsCreated  Question[]     @relation("QuestionCreatedBy")
+  questionsUpdated  Question[]     @relation("QuestionUpdatedBy")
 
   @@index([role])
   @@index([preferredLanguage])
@@ -64,4 +97,95 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+model Survey {
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique @db.VarChar(120)
+  name        String       @db.VarChar(200)
+  description String?      @db.Text
+  status      SurveyStatus @default(DRAFT)
+  version     Int          @default(1)
+  createdBy   String       @map("created_by") @db.Uuid
+  updatedBy   String       @map("updated_by") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  createdByUser User          @relation("SurveyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser User          @relation("SurveyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  questions     SurveyQuestion[]
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([deletedAt])
+  @@map("surveys")
+}
+
+model Question {
+  id          String        @id @default(uuid()) @db.Uuid
+  code        String        @unique @db.VarChar(120)
+  text        String        @db.Text
+  description String?       @db.Text
+  questionType QuestionType  @map("question_type")
+  required    Boolean       @default(false)
+  status      QuestionStatus @default(DRAFT)
+  version     Int           @default(1)
+  createdBy   String        @map("created_by") @db.Uuid
+  updatedBy   String        @map("updated_by") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  createdByUser User             @relation("QuestionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser User             @relation("QuestionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  options       QuestionOption[]
+  surveyLinks   SurveyQuestion[]
+
+  @@index([questionType])
+  @@index([status])
+  @@index([createdBy])
+  @@index([deletedAt])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id          String               @id @default(uuid()) @db.Uuid
+  questionId  String               @map("question_id") @db.Uuid
+  code        String               @db.VarChar(120)
+  value       String               @db.VarChar(250)
+  displayOrder Int                 @map("display_order")
+  status      QuestionOptionStatus @default(ACTIVE)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, code])
+  @@unique([questionId, displayOrder])
+  @@index([questionId, status])
+  @@index([deletedAt])
+  @@map("question_options")
+}
+
+model SurveyQuestion {
+  id          String    @id @default(uuid()) @db.Uuid
+  surveyId    String    @map("survey_id") @db.Uuid
+  questionId  String    @map("question_id") @db.Uuid
+  displayOrder Int      @map("display_order")
+  isRequired  Boolean   @default(false) @map("is_required")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  survey   Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([surveyId, questionId])
+  @@unique([surveyId, displayOrder])
+  @@index([surveyId])
+  @@index([questionId])
+  @@index([deletedAt])
+  @@map("survey_questions")
 }
