@@ -5,7 +5,7 @@ export const configuration = () => ({
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: Number(process.env.PORT ?? 3000),
     apiPrefix: process.env.API_PREFIX ?? 'api',
-    apiVersion: process.env.API_VERSION ?? 'v1',
+    apiVersion: process.env.API_VERSION ?? '1',
     corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173').split(','),
   },
   auth: {
@@ -21,7 +21,7 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
     NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
     PORT: Joi.number().port().default(3000),
     API_PREFIX: Joi.string().default('api'),
-    API_VERSION: Joi.string().default('v1'),
+    API_VERSION: Joi.string().default('1'),
     CORS_ORIGINS: Joi.string().required(),
     DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
     JWT_ACCESS_SECRET: Joi.string().min(32).required(),
