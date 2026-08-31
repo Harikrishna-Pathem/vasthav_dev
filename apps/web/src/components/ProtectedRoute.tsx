@@ -6,7 +6,16 @@ export function ProtectedRoute() {
   const location = useLocation();
 
   if (isLoading) {
-    return <main>Loading...</main>;
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 px-4">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-vasthav-700" />
+          <p className="text-sm font-medium text-slate-500">
+            Loading VASTHAV...
+          </p>
+        </div>
+      </main>
+    );
   }
 
   if (!isAuthenticated) {
