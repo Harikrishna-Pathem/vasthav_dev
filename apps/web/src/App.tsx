@@ -7,6 +7,9 @@ import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SurveysPage } from './pages/surveys/SurveysPage';
 import { CreateSurveyPage } from './pages/surveys/CreateSurveyPage';
+import { SurveyDetailsPage } from './pages/surveys/SurveyDetailsPage';
+import { SurveyQuestionsPage } from './pages/surveys/SurveyQuestionsPage';
+import { CreateQuestionPage } from './pages/surveys/CreateQuestionPage';
 
 export function App() {
   return (
@@ -18,8 +21,24 @@ export function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+
             <Route path="/surveys" element={<SurveysPage />} />
-            <Route path="/surveys/new" element={<CreateSurveyPage />} />
+            <Route
+              path="/surveys/new"
+              element={<CreateSurveyPage />}
+            />
+            <Route
+              path="/surveys/:id"
+              element={<SurveyDetailsPage />}
+            />
+            <Route
+              path="/surveys/:id/questions"
+              element={<SurveyQuestionsPage />}
+            />
+            <Route
+              path="/surveys/:id/questions/new"
+              element={<CreateQuestionPage />}
+            />
           </Route>
 
           <Route
