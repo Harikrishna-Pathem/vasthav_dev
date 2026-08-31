@@ -5,6 +5,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { DashboardPage } from './pages/DashboardPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
+import { SurveysPage } from './pages/surveys/SurveysPage';
+import { CreateSurveyPage } from './pages/surveys/CreateSurveyPage';
 
 export function App() {
   return (
@@ -16,6 +18,8 @@ export function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/surveys" element={<SurveysPage />} />
+            <Route path="/surveys/new" element={<CreateSurveyPage />} />
           </Route>
 
           <Route
@@ -27,14 +31,3 @@ export function App() {
     </BrowserRouter>
   );
 }
-
-//  {
-//   id: '7ffd4ec0-99a1-46a6-949a-1c954e1502e6',
-//   email: 'admin@vasthav.local',
-//   displayName: 'VASTHAV Admin',
-//   role: 'ADMIN',
-//   preferredLanguage: 'en'
-// }
-
-// Email:    admin@vasthav.local
-// Password: Vasthav@Admin123

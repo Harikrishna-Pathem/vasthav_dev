@@ -1,5 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, SurveyStatus, UserLanguage, UserRole } from '@prisma/client';
+import {
+  Prisma,
+  QuestionStatus,
+  SurveyStatus,
+  UserLanguage,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthenticatedUser } from '../auth/auth.types.js';
 import { TranslationResolverService } from '../translations/translation-resolver.service.js';
@@ -282,7 +288,7 @@ export class SurveysService {
 
     const question = await this.prisma.question.findFirst({ where: { id: questionId, deletedAt: null }, select: { id: true, status: true } });
     if (!question) throw new NotFoundException('Question not found');
-    if (question.status === SurveyStatus.ARCHIVED) {
+    if (question.status === QuestionStatus.ARCHIVED) {
       throw new ConflictException('Archived questions cannot be added to a survey');
     }
 
