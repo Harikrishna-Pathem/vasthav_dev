@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
+import { UserLanguage } from '@prisma/client';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
@@ -30,7 +31,7 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('Account is inactive or no longer available');
       }
 
-      request.user = { id: user.id, email: user.email, role: user.role };
+      request.user = { id: user.id, email: user.email, role: user.role, preferredLanguage: (payload.preferredLanguage ?? user.preferredLanguage ?? UserLanguage.en) as UserLanguage };
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;

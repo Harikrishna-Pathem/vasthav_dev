@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { SurveyStatus, UserRole } from '@prisma/client';
+import { SurveyStatus, UserLanguage, UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Permission, Permissions } from '../auth/decorators/permissions.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -36,14 +36,40 @@ export class SurveysController {
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   @ApiQuery({ name: 'status', required: false, enum: SurveyStatus })
   @ApiQuery({ name: 'search', required: false, type: String })
-  list(@Query() query: ListSurveysQueryDto) {
-    return this.surveys.list(query);
+  @ApiQuery({ name: 'language', required: false, type: String })
+  list(@Query() query: ListSurveysQueryDto, @Query('language') language?: string) {
+    return this.surveys.list(query, language);
   }
 
   @Get(':id')
   @Permissions(Permission.SurveyRead)
-  getById(@Param('id') id: string) {
-    return this.surveys.findById(id);
+  @ApiQuery({ name: 'language', required: false, type: String })
+  getById(@Param('id') id: string, @Query('language') language?: string) {
+    return this.surveys.findById(id, language);
+  }
+
+  @Get(':id/translations')
+  @Permissions(Permission.SurveyRead)
+  getTranslations(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.surveys.getTranslations(id, user);
+  }
+
+  @Post(':id/translations')
+  @Permissions(Permission.SurveyWrite)
+  createTranslation(@Param('id') id: string, @Body() dto: { language: UserLanguage; name: string; description?: string | null }, @CurrentUser() user: AuthenticatedUser) {
+    return this.surveys.createTranslation(id, dto, user);
+  }
+
+  @Patch(':id/translations/:language')
+  @Permissions(Permission.SurveyWrite)
+  updateTranslation(@Param('id') id: string, @Param('language') language: string, @Body() dto: { name?: string; description?: string | null }, @CurrentUser() user: AuthenticatedUser) {
+    return this.surveys.updateTranslation(id, language as UserLanguage, dto, user);
+  }
+
+  @Delete(':id/translations/:language')
+  @Permissions(Permission.SurveyWrite)
+  deleteTranslation(@Param('id') id: string, @Param('language') language: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.surveys.deleteTranslation(id, language as UserLanguage, user);
   }
 
   @Patch(':id')

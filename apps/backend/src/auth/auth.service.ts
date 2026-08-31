@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { createHash } from 'node:crypto';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 import { AppConfigService } from '../config/app-config.service.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -29,7 +29,7 @@ export class AuthService {
   }
   private async issueTokens(user: AuthenticatedUser) {
     const session = await this.prisma.refreshToken.create({ data: { userId: user.id, tokenHash: 'pending', expiresAt: this.expiry(this.config.refreshTokenTtl) } });
-    const accessPayload: AccessTokenPayload = { sub: user.id, email: user.email, role: user.role };
+    const accessPayload: AccessTokenPayload = { sub: user.id, email: user.email, role: user.role, preferredLanguage: user.preferredLanguage ?? undefined };
     const refreshPayload: RefreshTokenPayload = { ...accessPayload, sid: session.id };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(accessPayload, { secret: this.config.accessTokenSecret, expiresIn: this.config.accessTokenTtl }),

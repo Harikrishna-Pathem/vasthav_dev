@@ -13,3 +13,5 @@ build/
 android/.gradle/
 ios/Pods/
 *.log
+
+*.tsbuildinfo

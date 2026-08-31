@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, QuestionStatus, QuestionType, UserRole } from '@prisma/client';
+import { Prisma, QuestionStatus, QuestionType, UserLanguage, UserRole } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthenticatedUser } from '../auth/auth.types.js';
+import { TranslationResolverService } from '../translations/translation-resolver.service.js';
 import { CreateQuestionDto } from './dto/create-question.dto.js';
 import { UpdateQuestionDto } from './dto/update-question.dto.js';
 import { ListQuestionsQueryDto } from './dto/list-questions-query.dto.js';
@@ -27,7 +28,10 @@ const questionSelect = {
 
 @Injectable()
 export class QuestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly translationResolver: TranslationResolverService,
+  ) {}
 
   private assertCanManageQuestion(user: AuthenticatedUser, question: { createdBy: string }) {
     if (user.role === UserRole.ADMIN) return;
@@ -103,7 +107,7 @@ export class QuestionsService {
     return created;
   }
 
-  async list(query: ListQuestionsQueryDto) {
+  async list(query: ListQuestionsQueryDto, language?: string) {
     const page = Number(query.page ?? 1);
     const limit = Number(query.limit ?? 20);
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
@@ -127,17 +131,64 @@ export class QuestionsService {
     };
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.question.findMany({ where, skip, take: safeLimit, orderBy: { createdAt: 'desc' }, select: questionSelect }),
+      this.prisma.question.findMany({
+        where,
+        skip,
+        take: safeLimit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          translations: { select: { language: true, text: true, description: true } },
+        },
+      }),
       this.prisma.question.count({ where }),
     ]);
 
-    return { page: safePage, limit: safeLimit, total, data };
+    const normalized = language ? data.map((question) => {
+      const resolved = this.translationResolver.resolveLanguage({
+        requestedLanguage: language,
+        userPreferredLanguage: undefined,
+        available: question.translations.map((translation) => ({ language: translation.language, text: translation.text, description: translation.description })),
+      });
+      return {
+        ...question,
+        text: resolved.text,
+        description: question.translations.find((translation) => translation.language === resolved.language)?.description ?? question.description,
+        language: resolved.language,
+      };
+    }) : data;
+
+    return { page: safePage, limit: safeLimit, total, data: normalized };
   }
 
-  async findById(id: string) {
-    const question = await this.prisma.question.findFirst({ where: { id, deletedAt: null }, select: questionSelect });
+  async findById(id: string, language?: string) {
+    const question = await this.prisma.question.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        translations: { select: { language: true, text: true, description: true } },
+      },
+    });
     if (!question) throw new NotFoundException('Question not found');
-    return question;
+
+    if (!language) {
+      return {
+        ...question,
+        translations: question.translations,
+      };
+    }
+
+    const resolved = this.translationResolver.resolveLanguage({
+      requestedLanguage: language,
+      userPreferredLanguage: undefined,
+      available: question.translations.map((translation) => ({ language: translation.language, text: translation.text, description: translation.description })),
+    });
+
+    return {
+      ...question,
+      text: resolved.text,
+      description: question.translations.find((translation) => translation.language === resolved.language)?.description ?? question.description,
+      language: resolved.language,
+      translations: question.translations,
+    };
   }
 
   async update(id: string, dto: UpdateQuestionDto, user: AuthenticatedUser) {
@@ -230,9 +281,30 @@ export class QuestionsService {
     return this.updateStatus(id, { status: QuestionStatus.ARCHIVED }, user);
   }
 
-  async listQuestionOptions(questionId: string) {
+  async listQuestionOptions(questionId: string, language?: string) {
     const question = await this.findById(questionId);
-    return this.prisma.questionOption.findMany({ where: { questionId: question.id, deletedAt: null }, orderBy: { displayOrder: 'asc' } });
+    const options = await this.prisma.questionOption.findMany({
+      where: { questionId: question.id, deletedAt: null },
+      orderBy: { displayOrder: 'asc' },
+      include: { translations: { select: { language: true, text: true } } },
+    });
+
+    if (!language) {
+      return options;
+    }
+
+    return options.map((option) => {
+      const resolved = this.translationResolver.resolveLanguage({
+        requestedLanguage: language,
+        userPreferredLanguage: undefined,
+        available: option.translations.map((translation) => ({ language: translation.language, text: translation.text })),
+      });
+      return {
+        ...option,
+        value: resolved.text,
+        language: resolved.language,
+      };
+    });
   }
 
   async createOption(questionId: string, dto: CreateQuestionOptionDto, user: AuthenticatedUser) {
@@ -295,6 +367,102 @@ export class QuestionsService {
     for (let i = 0; i < next.length; i += 1) {
       await this.prisma.questionOption.update({ where: { id: next[i].id }, data: { displayOrder: i + 1 } });
     }
+    return { success: true };
+  }
+
+  async getTranslations(questionId: string, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    return this.prisma.questionTranslation.findMany({
+      where: { questionId: question.id },
+      orderBy: { language: 'asc' },
+    });
+  }
+
+  async createTranslation(questionId: string, dto: { language: UserLanguage; text: string; description?: string | null }, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const trimmedText = dto.text.trim();
+    if (!trimmedText) throw new BadRequestException('Question translation text cannot be empty');
+
+    const existing = await this.prisma.questionTranslation.findFirst({ where: { questionId: question.id, language: dto.language } });
+    if (existing) throw new ConflictException('Question translation already exists for this language');
+
+    return this.prisma.questionTranslation.create({
+      data: {
+        questionId: question.id,
+        language: dto.language,
+        text: trimmedText,
+        description: dto.description?.trim() ?? null,
+      },
+    });
+  }
+
+  async updateTranslation(questionId: string, language: UserLanguage, dto: { text?: string; description?: string | null }, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const translation = await this.prisma.questionTranslation.findFirst({ where: { questionId: question.id, language } });
+    if (!translation) throw new NotFoundException('Question translation not found');
+
+    return this.prisma.questionTranslation.update({
+      where: { id: translation.id },
+      data: {
+        ...(dto.text !== undefined ? { text: dto.text.trim() } : {}),
+        ...(dto.description !== undefined ? { description: dto.description?.trim() ?? null } : {}),
+      },
+    });
+  }
+
+  async deleteTranslation(questionId: string, language: UserLanguage, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const translation = await this.prisma.questionTranslation.findFirst({ where: { questionId: question.id, language } });
+    if (!translation) throw new NotFoundException('Question translation not found');
+    await this.prisma.questionTranslation.delete({ where: { id: translation.id } });
+    return { success: true };
+  }
+
+  async getOptionTranslations(questionId: string, optionId: string, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const option = await this.prisma.questionOption.findFirst({ where: { id: optionId, questionId: question.id, deletedAt: null } });
+    if (!option) throw new NotFoundException('Question option not found');
+    return this.prisma.questionOptionTranslation.findMany({ where: { optionId: option.id }, orderBy: { language: 'asc' } });
+  }
+
+  async createOptionTranslation(questionId: string, optionId: string, dto: { language: UserLanguage; text: string }, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const option = await this.prisma.questionOption.findFirst({ where: { id: optionId, questionId: question.id, deletedAt: null } });
+    if (!option) throw new NotFoundException('Question option not found');
+    const trimmedText = dto.text.trim();
+    if (!trimmedText) throw new BadRequestException('Option translation text cannot be empty');
+    const existing = await this.prisma.questionOptionTranslation.findFirst({ where: { optionId: option.id, language: dto.language } });
+    if (existing) throw new ConflictException('Option translation already exists for this language');
+    return this.prisma.questionOptionTranslation.create({ data: { optionId: option.id, language: dto.language, text: trimmedText } });
+  }
+
+  async updateOptionTranslation(questionId: string, optionId: string, language: UserLanguage, dto: { text?: string }, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const option = await this.prisma.questionOption.findFirst({ where: { id: optionId, questionId: question.id, deletedAt: null } });
+    if (!option) throw new NotFoundException('Question option not found');
+    const translation = await this.prisma.questionOptionTranslation.findFirst({ where: { optionId: option.id, language } });
+    if (!translation) throw new NotFoundException('Question option translation not found');
+    return this.prisma.questionOptionTranslation.update({
+      where: { id: translation.id },
+      data: { ...(dto.text !== undefined ? { text: dto.text.trim() } : {}) },
+    });
+  }
+
+  async deleteOptionTranslation(questionId: string, optionId: string, language: UserLanguage, user: AuthenticatedUser) {
+    const question = await this.findById(questionId);
+    this.assertCanManageQuestion(user, question);
+    const option = await this.prisma.questionOption.findFirst({ where: { id: optionId, questionId: question.id, deletedAt: null } });
+    if (!option) throw new NotFoundException('Question option not found');
+    const translation = await this.prisma.questionOptionTranslation.findFirst({ where: { optionId: option.id, language } });
+    if (!translation) throw new NotFoundException('Question option translation not found');
+    await this.prisma.questionOptionTranslation.delete({ where: { id: translation.id } });
     return { success: true };
   }
 

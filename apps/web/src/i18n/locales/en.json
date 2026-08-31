@@ -1,1 +1,19 @@
-{ "appName": "VASTHAV", "welcome": "Welcome to VASTHAV", "loading": "Loading…", "unexpectedError": "Something went wrong." }
+{
+  "appName": "VASTHAV",
+  "welcome": "Welcome to VASTHAV",
+  "loading": "Loading...",
+  "unexpectedError": "Something went wrong.",
+  "auth": {
+    "login": "Login",
+    "email": "Email",
+    "password": "Password",
+    "loggingIn": "Logging in...",
+    "loginFailed": "Login failed. Please check your credentials.",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome, {{email}}",
+    "role": "Role"
+  }
+}

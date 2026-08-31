@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, SurveyStatus, UserRole } from '@prisma/client';
+import { Prisma, SurveyStatus, UserLanguage, UserRole } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthenticatedUser } from '../auth/auth.types.js';
+import { TranslationResolverService } from '../translations/translation-resolver.service.js';
 import { CreateSurveyDto } from './dto/create-survey.dto.js';
 import { ListSurveysQueryDto } from './dto/list-surveys-query.dto.js';
 import { UpdateSurveyDto } from './dto/update-survey.dto.js';
@@ -23,7 +24,10 @@ const surveySelect = {
 
 @Injectable()
 export class SurveysService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly translationResolver: TranslationResolverService,
+  ) {}
 
   private assertCanManageSurvey(user: AuthenticatedUser, survey: { createdBy: string }) {
     if (user.role === UserRole.ADMIN) return;
@@ -63,7 +67,7 @@ export class SurveysService {
     return created;
   }
 
-  async list(query: ListSurveysQueryDto) {
+  async list(query: ListSurveysQueryDto, language?: string) {
     const page = Number(query.page ?? 1);
     const limit = Number(query.limit ?? 20);
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
@@ -86,17 +90,64 @@ export class SurveysService {
     };
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.survey.findMany({ where, skip, take: safeLimit, orderBy: { createdAt: 'desc' }, select: surveySelect }),
+      this.prisma.survey.findMany({
+        where,
+        skip,
+        take: safeLimit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          translations: { select: { language: true, name: true, description: true } },
+        },
+      }),
       this.prisma.survey.count({ where }),
     ]);
 
-    return { page: safePage, limit: safeLimit, total, data };
+    const normalized = language ? data.map((survey) => {
+      const resolved = this.translationResolver.resolveLanguage({
+        requestedLanguage: language,
+        userPreferredLanguage: undefined,
+        available: survey.translations.map((translation) => ({ language: translation.language, name: translation.name, description: translation.description })),
+      });
+      return {
+        ...survey,
+        name: resolved.text,
+        description: survey.translations.find((translation) => translation.language === resolved.language)?.description ?? survey.description,
+        language: resolved.language,
+      };
+    }) : data;
+
+    return { page: safePage, limit: safeLimit, total, data: normalized };
   }
 
-  async findById(id: string) {
-    const survey = await this.prisma.survey.findFirst({ where: { id, deletedAt: null }, select: surveySelect });
+  async findById(id: string, language?: string) {
+    const survey = await this.prisma.survey.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        translations: { select: { language: true, name: true, description: true } },
+      },
+    });
     if (!survey) throw new NotFoundException('Survey not found');
-    return survey;
+
+    if (!language) {
+      return {
+        ...survey,
+        translations: survey.translations,
+      };
+    }
+
+    const resolved = this.translationResolver.resolveLanguage({
+      requestedLanguage: language,
+      userPreferredLanguage: undefined,
+      available: survey.translations.map((translation) => ({ language: translation.language, name: translation.name, description: translation.description })),
+    });
+
+    return {
+      ...survey,
+      name: resolved.text,
+      description: survey.translations.find((translation) => translation.language === resolved.language)?.description ?? survey.description,
+      language: resolved.language,
+      translations: survey.translations,
+    };
   }
 
   async update(id: string, dto: UpdateSurveyDto, user: AuthenticatedUser) {
@@ -162,6 +213,58 @@ export class SurveysService {
 
   async archive(id: string, user: AuthenticatedUser) {
     return this.updateStatus(id, { status: SurveyStatus.ARCHIVED }, user);
+  }
+
+  async getTranslations(surveyId: string, user: AuthenticatedUser) {
+    const survey = await this.findById(surveyId);
+    this.assertCanManageSurvey(user, survey);
+    return this.prisma.surveyTranslation.findMany({
+      where: { surveyId: survey.id },
+      orderBy: { language: 'asc' },
+    });
+  }
+
+  async createTranslation(surveyId: string, dto: { language: UserLanguage; name: string; description?: string | null }, user: AuthenticatedUser) {
+    const survey = await this.findById(surveyId);
+    this.assertCanManageSurvey(user, survey);
+    const trimmedName = dto.name.trim();
+    if (!trimmedName) throw new BadRequestException('Survey translation name cannot be empty');
+
+    const existing = await this.prisma.surveyTranslation.findFirst({ where: { surveyId: survey.id, language: dto.language } });
+    if (existing) throw new ConflictException('Survey translation already exists for this language');
+
+    return this.prisma.surveyTranslation.create({
+      data: {
+        surveyId: survey.id,
+        language: dto.language,
+        name: trimmedName,
+        description: dto.description?.trim() ?? null,
+      },
+    });
+  }
+
+  async updateTranslation(surveyId: string, language: UserLanguage, dto: { name?: string; description?: string | null }, user: AuthenticatedUser) {
+    const survey = await this.findById(surveyId);
+    this.assertCanManageSurvey(user, survey);
+    const translation = await this.prisma.surveyTranslation.findFirst({ where: { surveyId: survey.id, language } });
+    if (!translation) throw new NotFoundException('Survey translation not found');
+
+    return this.prisma.surveyTranslation.update({
+      where: { id: translation.id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.description !== undefined ? { description: dto.description?.trim() ?? null } : {}),
+      },
+    });
+  }
+
+  async deleteTranslation(surveyId: string, language: UserLanguage, user: AuthenticatedUser) {
+    const survey = await this.findById(surveyId);
+    this.assertCanManageSurvey(user, survey);
+    const translation = await this.prisma.surveyTranslation.findFirst({ where: { surveyId: survey.id, language } });
+    if (!translation) throw new NotFoundException('Survey translation not found');
+    await this.prisma.surveyTranslation.delete({ where: { id: translation.id } });
+    return { success: true };
   }
 
   private defaultCode(name: string): string {

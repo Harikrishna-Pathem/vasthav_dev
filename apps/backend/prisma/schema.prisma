@@ -112,14 +112,31 @@ model Survey {
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
-  createdByUser User          @relation("SurveyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
-  updatedByUser User          @relation("SurveyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  createdByUser User                @relation("SurveyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser User                @relation("SurveyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
   questions     SurveyQuestion[]
+  translations  SurveyTranslation[]
 
   @@index([status])
   @@index([createdBy])
   @@index([deletedAt])
   @@map("surveys")
+}
+
+model SurveyTranslation {
+  id          String       @id @default(uuid()) @db.Uuid
+  surveyId    String       @map("survey_id") @db.Uuid
+  language    UserLanguage
+  name        String       @db.VarChar(200)
+  description String?      @db.Text
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, language])
+  @@index([surveyId, language])
+  @@map("survey_translations")
 }
 
 model Question {
@@ -137,10 +154,11 @@ model Question {
   updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz(6)
 
-  createdByUser User             @relation("QuestionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
-  updatedByUser User             @relation("QuestionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  createdByUser User                  @relation("QuestionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser User                  @relation("QuestionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
   options       QuestionOption[]
   surveyLinks   SurveyQuestion[]
+  translations  QuestionTranslation[]
 
   @@index([questionType])
   @@index([status])
@@ -149,24 +167,56 @@ model Question {
   @@map("questions")
 }
 
-model QuestionOption {
-  id          String               @id @default(uuid()) @db.Uuid
-  questionId  String               @map("question_id") @db.Uuid
-  code        String               @db.VarChar(120)
-  value       String               @db.VarChar(250)
-  displayOrder Int                 @map("display_order")
-  status      QuestionOptionStatus @default(ACTIVE)
-  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt   DateTime?            @map("deleted_at") @db.Timestamptz(6)
+model QuestionTranslation {
+  id          String       @id @default(uuid()) @db.Uuid
+  questionId  String       @map("question_id") @db.Uuid
+  language    UserLanguage
+  text        String       @db.Text
+  description String?      @db.Text
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, language])
+  @@index([questionId, language])
+  @@map("question_translations")
+}
+
+model QuestionOption {
+  id           String               @id @default(uuid()) @db.Uuid
+  questionId   String               @map("question_id") @db.Uuid
+  code         String               @db.VarChar(120)
+  value        String               @db.VarChar(250)
+  displayOrder Int                  @map("display_order")
+  status       QuestionOptionStatus @default(ACTIVE)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  question     Question                   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  translations QuestionOptionTranslation[]
 
   @@unique([questionId, code])
   @@unique([questionId, displayOrder])
   @@index([questionId, status])
   @@index([deletedAt])
   @@map("question_options")
+}
+
+model QuestionOptionTranslation {
+  id        String       @id @default(uuid()) @db.Uuid
+  optionId  String       @map("option_id") @db.Uuid
+  language  UserLanguage
+  text      String       @db.VarChar(250)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  option QuestionOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, language])
+  @@index([optionId, language])
+  @@map("question_option_translations")
 }
 
 model SurveyQuestion {

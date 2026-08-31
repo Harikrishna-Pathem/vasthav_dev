@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { QuestionStatus, QuestionType, UserRole } from '@prisma/client';
+import { QuestionStatus, QuestionType, UserLanguage, UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Permission, Permissions } from '../auth/decorators/permissions.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -39,14 +39,40 @@ export class QuestionsController {
   @ApiQuery({ name: 'status', required: false, enum: QuestionStatus })
   @ApiQuery({ name: 'questionType', required: false, enum: QuestionType })
   @ApiQuery({ name: 'search', required: false, type: String })
-  list(@Query() query: ListQuestionsQueryDto) {
-    return this.questions.list(query);
+  @ApiQuery({ name: 'language', required: false, type: String })
+  list(@Query() query: ListQuestionsQueryDto, @Query('language') language?: string) {
+    return this.questions.list(query, language);
   }
 
   @Get(':id')
   @Permissions(Permission.QuestionRead)
-  getById(@Param('id') id: string) {
-    return this.questions.findById(id);
+  @ApiQuery({ name: 'language', required: false, type: String })
+  getById(@Param('id') id: string, @Query('language') language?: string) {
+    return this.questions.findById(id, language);
+  }
+
+  @Get(':id/translations')
+  @Permissions(Permission.QuestionRead)
+  getTranslations(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.getTranslations(id, user);
+  }
+
+  @Post(':id/translations')
+  @Permissions(Permission.QuestionWrite)
+  createTranslation(@Param('id') id: string, @Body() dto: { language: UserLanguage; text: string; description?: string | null }, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.createTranslation(id, dto, user);
+  }
+
+  @Patch(':id/translations/:language')
+  @Permissions(Permission.QuestionWrite)
+  updateTranslation(@Param('id') id: string, @Param('language') language: string, @Body() dto: { text?: string; description?: string | null }, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.updateTranslation(id, language as UserLanguage, dto, user);
+  }
+
+  @Delete(':id/translations/:language')
+  @Permissions(Permission.QuestionWrite)
+  deleteTranslation(@Param('id') id: string, @Param('language') language: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.deleteTranslation(id, language as UserLanguage, user);
   }
 
   @Patch(':id')
@@ -69,8 +95,33 @@ export class QuestionsController {
 
   @Get(':questionId/options')
   @Permissions(Permission.QuestionRead)
-  listOptions(@Param('questionId') questionId: string) {
-    return this.questions.listQuestionOptions(questionId);
+  @ApiQuery({ name: 'language', required: false, type: String })
+  listOptions(@Param('questionId') questionId: string, @Query('language') language?: string) {
+    return this.questions.listQuestionOptions(questionId, language);
+  }
+
+  @Get(':questionId/options/:optionId/translations')
+  @Permissions(Permission.QuestionRead)
+  getOptionTranslations(@Param('questionId') questionId: string, @Param('optionId') optionId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.getOptionTranslations(questionId, optionId, user);
+  }
+
+  @Post(':questionId/options/:optionId/translations')
+  @Permissions(Permission.QuestionWrite)
+  createOptionTranslation(@Param('questionId') questionId: string, @Param('optionId') optionId: string, @Body() dto: { language: UserLanguage; text: string }, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.createOptionTranslation(questionId, optionId, dto, user);
+  }
+
+  @Patch(':questionId/options/:optionId/translations/:language')
+  @Permissions(Permission.QuestionWrite)
+  updateOptionTranslation(@Param('questionId') questionId: string, @Param('optionId') optionId: string, @Param('language') language: string, @Body() dto: { text?: string }, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.updateOptionTranslation(questionId, optionId, language as UserLanguage, dto, user);
+  }
+
+  @Delete(':questionId/options/:optionId/translations/:language')
+  @Permissions(Permission.QuestionWrite)
+  deleteOptionTranslation(@Param('questionId') questionId: string, @Param('optionId') optionId: string, @Param('language') language: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.deleteOptionTranslation(questionId, optionId, language as UserLanguage, user);
   }
 
   @Post(':questionId/options')
