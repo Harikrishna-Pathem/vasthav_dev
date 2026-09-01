@@ -50,11 +50,6 @@ export interface SurveyQuestion {
   updatedAt: string;
 }
 
-export interface SurveyQuestionsResponse {
-  data: SurveyQuestion[];
-  total?: number;
-}
-
 export interface CreateQuestionOptionRequest {
   code: string;
   value: string;

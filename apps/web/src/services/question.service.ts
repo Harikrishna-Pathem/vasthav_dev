@@ -4,7 +4,6 @@ import type {
   CreateQuestionRequest,
   Question,
   SurveyQuestion,
-  SurveyQuestionsResponse,
   UpdateQuestionOptionRequest,
   UpdateQuestionRequest,
   UpdateQuestionStatusRequest,
@@ -12,15 +11,12 @@ import type {
 
 export async function listSurveyQuestions(
   surveyId: string,
-): Promise<SurveyQuestionsResponse> {
+): Promise<SurveyQuestion[]> {
   const response = await apiClient.get<SurveyQuestion[]>(
     `/surveys/${surveyId}/questions`,
   );
 
-  return {
-    data: response.data,
-    total: response.data.length,
-  };
+  return response.data;
 }
 
 export async function createQuestion(
