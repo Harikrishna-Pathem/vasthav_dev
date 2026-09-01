@@ -10,7 +10,7 @@ import { CreateSurveyPage } from './pages/surveys/CreateSurveyPage';
 import { SurveyDetailsPage } from './pages/surveys/SurveyDetailsPage';
 import { SurveyQuestionsPage } from './pages/surveys/SurveyQuestionsPage';
 import { CreateQuestionPage } from './pages/surveys/CreateQuestionPage';
-
+import { EditQuestionPage } from './pages/surveys/EditQuestionPage';
 export function App() {
   return (
     <BrowserRouter>
@@ -23,30 +23,21 @@ export function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
 
             <Route path="/surveys" element={<SurveysPage />} />
-            <Route
-              path="/surveys/new"
-              element={<CreateSurveyPage />}
-            />
-            <Route
-              path="/surveys/:id"
-              element={<SurveyDetailsPage />}
-            />
-            <Route
-              path="/surveys/:id/questions"
-              element={<SurveyQuestionsPage />}
-            />
-            <Route
-              path="/surveys/:id/questions/new"
-              element={<CreateQuestionPage />}
-            />
+            <Route path="/surveys/new" element={<CreateSurveyPage />} />
+            <Route path="/surveys/:id" element={<SurveyDetailsPage />} />
+
+            <Route path="/surveys/:id/questions" element={<SurveyQuestionsPage />} />
+            <Route path="/surveys/:id/questions/new" element={<CreateQuestionPage />} />
+            <Route path="/surveys/:id/questions/:questionId" element={<EditQuestionPage />} />
           </Route>
 
-          <Route
-            path="*"
-            element={<Navigate to="/" replace />}
-          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
   );
 }
+
+
+
+
