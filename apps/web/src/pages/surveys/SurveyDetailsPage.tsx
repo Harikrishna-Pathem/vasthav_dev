@@ -1,11 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import {
-  getSurvey,
-  updateSurvey,
-  updateSurveyStatus,
-} from '../../services/survey.service';
+import { getSurvey, updateSurvey, updateSurveyStatus } from '../../services/survey.service';
 import type { Survey, SurveyStatus } from '../../types/survey';
 
 function formatDate(value: string): string {
@@ -73,11 +69,7 @@ export function SurveyDetailsPage() {
       setCode(response.code);
       setDescription(response.description ?? '');
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to load the survey.',
-      );
+      setError(err instanceof Error ? err.message : 'Unable to load the survey.');
     } finally {
       setIsLoading(false);
     }
@@ -131,11 +123,7 @@ export function SurveyDetailsPage() {
       setDescription(updated.description ?? '');
       setSuccess('Survey details saved successfully.');
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to save survey details.',
-      );
+      setError(err instanceof Error ? err.message : 'Unable to save survey details.');
     } finally {
       setIsSaving(false);
     }
@@ -162,11 +150,7 @@ export function SurveyDetailsPage() {
 
       setSuccess(`Survey status changed to ${updated.status}.`);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to update survey status.',
-      );
+      setError(err instanceof Error ? err.message : 'Unable to update survey status.');
     } finally {
       setIsChangingStatus(false);
     }
@@ -197,11 +181,7 @@ export function SurveyDetailsPage() {
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
           <p className="font-semibold">Unable to load survey</p>
           <p className="mt-1">{error}</p>
-          <button
-            type="button"
-            onClick={() => navigate('/surveys')}
-            className="btn-secondary mt-4"
-          >
+          <button type="button" onClick={() => navigate('/surveys')} className="btn-secondary mt-4">
             Back to surveys
           </button>
         </div>
@@ -228,9 +208,7 @@ export function SurveyDetailsPage() {
 
         <span>/</span>
 
-        <span className="truncate text-vasthav-700">
-          {survey.name}
-        </span>
+        <span className="truncate text-vasthav-700">{survey.name}</span>
       </div>
 
       <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
@@ -272,9 +250,7 @@ export function SurveyDetailsPage() {
       <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <form onSubmit={handleSave} className="card overflow-hidden">
           <div className="border-b border-slate-100 px-5 py-5 sm:px-7">
-            <h2 className="text-base font-bold text-slate-900">
-              Survey information
-            </h2>
+            <h2 className="text-base font-bold text-slate-900">Survey information</h2>
             <p className="mt-1 text-sm text-slate-500">
               Update the basic information for this survey.
             </p>
@@ -358,76 +334,121 @@ export function SurveyDetailsPage() {
 
         <aside className="space-y-6">
           <div className="card p-5">
-            <h2 className="text-base font-bold text-slate-900">
-              Survey status
-            </h2>
+            <h2 className="text-base font-bold text-slate-900">Survey status</h2>
 
             <p className="mt-1 text-sm text-slate-500">
               Change the lifecycle status of this survey.
             </p>
 
-            <div className="mt-5 space-y-2">
-              {(['DRAFT', 'PUBLISHED', 'ARCHIVED'] as SurveyStatus[]).map(
-                (status) => (
+            <div className="mt-5 space-y-3">
+              {survey.status === 'DRAFT' && (
+                <>
                   <button
-                    key={status}
                     type="button"
-                    disabled={
-                      isChangingStatus || status === survey.status
-                    }
-                    onClick={() => void handleStatusChange(status)}
-                    className={`w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                      status === survey.status
-                        ? 'border-vasthav-200 bg-vasthav-50 text-vasthav-700'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                    disabled={isChangingStatus}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          'Publish this survey? Published surveys cannot be destructively modified.',
+                        )
+                      ) {
+                        void handleStatusChange('PUBLISHED');
+                      }
+                    }}
+                    className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {status}
+                    {isChangingStatus ? 'Publishing...' : 'Publish survey'}
                   </button>
-                ),
+
+                  <button
+                    type="button"
+                    disabled={isChangingStatus}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          'Archive this draft survey? You can no longer use it as an active survey.',
+                        )
+                      ) {
+                        void handleStatusChange('ARCHIVED');
+                      }
+                    }}
+                    className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Archive survey
+                  </button>
+                </>
+              )}
+
+              {survey.status === 'PUBLISHED' && (
+                <>
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                    <p className="text-sm font-semibold text-emerald-800">
+                      This survey is published
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-emerald-700">
+                      Destructive changes are locked while the survey is published.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isChangingStatus}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          'Archive this published survey? This will remove it from the active survey lifecycle.',
+                        )
+                      ) {
+                        void handleStatusChange('ARCHIVED');
+                      }
+                    }}
+                    className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isChangingStatus ? 'Archiving...' : 'Archive survey'}
+                  </button>
+                </>
+              )}
+
+              {survey.status === 'ARCHIVED' && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-700">Survey archived</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    This survey is no longer part of the active lifecycle.
+                  </p>
+                </div>
               )}
             </div>
           </div>
 
           <div className="card p-5">
-            <h2 className="text-base font-bold text-slate-900">
-              Survey metadata
-            </h2>
+            <h2 className="text-base font-bold text-slate-900">Survey metadata</h2>
 
             <dl className="mt-5 space-y-4">
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Version
                 </dt>
-                <dd className="mt-1 text-sm font-semibold text-slate-800">
-                  {survey.version}
-                </dd>
+                <dd className="mt-1 text-sm font-semibold text-slate-800">{survey.version}</dd>
               </div>
 
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Created
                 </dt>
-                <dd className="mt-1 text-sm text-slate-600">
-                  {formatDate(survey.createdAt)}
-                </dd>
+                <dd className="mt-1 text-sm text-slate-600">{formatDate(survey.createdAt)}</dd>
               </div>
 
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Last updated
                 </dt>
-                <dd className="mt-1 text-sm text-slate-600">
-                  {formatDate(survey.updatedAt)}
-                </dd>
+                <dd className="mt-1 text-sm text-slate-600">{formatDate(survey.updatedAt)}</dd>
               </div>
             </dl>
           </div>
 
           <div className="card p-5">
-            <h2 className="text-base font-bold text-slate-900">
-              Next steps
-            </h2>
+            <h2 className="text-base font-bold text-slate-900">Next steps</h2>
 
             <div className="mt-4 space-y-2">
               <button
