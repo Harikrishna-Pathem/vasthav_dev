@@ -1,6 +1,7 @@
-import {
+﻿import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,9 +9,13 @@ import {
   Prisma,
   QuestionType,
   SurveyStatus,
+  UserRole,
 } from '@prisma/client';
+
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthenticatedUser } from '../auth/auth.types.js';
+
+import { ListResponsesQueryDto } from './dto/list-responses-query.dto.js';
 import { SubmitResponseDto } from './dto/submit-response.dto.js';
 
 @Injectable()
@@ -100,6 +105,156 @@ export class ResponsesService {
     });
 
     return response;
+  }
+
+  async listBySurvey(
+    surveyId: string,
+    query: ListResponsesQueryDto,
+    user: AuthenticatedUser,
+  ) {
+    const survey = await this.prisma.survey.findFirst({
+      where: {
+        id: surveyId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        createdBy: true,
+      },
+    });
+
+    if (!survey) {
+      throw new NotFoundException('Survey not found');
+    }
+
+    this.assertCanViewSurveyResponses(user, survey);
+
+    const page = Number(query.page ?? 1);
+    const limit = Number(query.limit ?? 20);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      surveyId,
+      ...(query.status
+        ? {
+            status: query.status,
+          }
+        : {}),
+      ...(query.respondentId
+        ? {
+            respondentId: query.respondentId,
+          }
+        : {}),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.surveyResponse.findMany({
+        where,
+        orderBy: [
+          {
+            submittedAt: 'desc',
+          },
+          {
+            createdAt: 'desc',
+          },
+        ],
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          surveyId: true,
+          respondentId: true,
+          status: true,
+          submittedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.surveyResponse.count({
+        where,
+      }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getById(
+    id: string,
+    user: AuthenticatedUser,
+  ) {
+    const response = await this.prisma.surveyResponse.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        survey: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            status: true,
+            createdBy: true,
+          },
+        },
+        answers: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+          include: {
+            question: {
+              select: {
+                id: true,
+                code: true,
+                text: true,
+                questionType: true,
+                required: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!response) {
+      throw new NotFoundException('Response not found');
+    }
+
+    this.assertCanViewSurveyResponses(user, response.survey);
+
+    return response;
+  }
+
+  private assertCanViewSurveyResponses(
+    user: AuthenticatedUser,
+    survey: {
+      createdBy: string;
+    },
+  ) {
+    if (user.role === UserRole.ADMIN) {
+      return;
+    }
+
+    if (user.role === UserRole.SURVEYER) {
+      if (survey.createdBy === user.id) {
+        return;
+      }
+
+      throw new ForbiddenException(
+        'You can only view responses for your own surveys',
+      );
+    }
+
+    throw new ForbiddenException(
+      'You do not have permission to view survey responses',
+    );
   }
 
   private validateAnswers(

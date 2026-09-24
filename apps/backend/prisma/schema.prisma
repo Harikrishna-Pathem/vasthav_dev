@@ -77,6 +77,7 @@ model User {
   surveysUpdated    Survey[]       @relation("SurveyUpdatedBy")
   questionsCreated  Question[]     @relation("QuestionCreatedBy")
   questionsUpdated  Question[]     @relation("QuestionUpdatedBy")
+  surveyResponses   SurveyResponse[]
 
   @@index([role])
   @@index([preferredLanguage])
@@ -116,6 +117,7 @@ model Survey {
   updatedByUser User                @relation("SurveyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
   questions     SurveyQuestion[]
   translations  SurveyTranslation[]
+  responses     SurveyResponse[]
 
   @@index([status])
   @@index([createdBy])
@@ -159,6 +161,7 @@ model Question {
   options       QuestionOption[]
   surveyLinks   SurveyQuestion[]
   translations  QuestionTranslation[]
+  answers       SurveyAnswer[]  
 
   @@index([questionType])
   @@index([status])
@@ -238,4 +241,41 @@ model SurveyQuestion {
   @@index([questionId])
   @@index([deletedAt])
   @@map("survey_questions")
+}
+
+model SurveyResponse {
+  id          String    @id @default(uuid()) @db.Uuid
+  surveyId    String    @map("survey_id") @db.Uuid
+  respondentId String?  @map("respondent_id") @db.Uuid
+  status      String    @default("SUBMITTED") @db.VarChar(30)
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  survey      Survey    @relation(fields: [surveyId], references: [id], onDelete: Restrict)
+  respondent  User?     @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+  answers     SurveyAnswer[]
+
+  @@index([surveyId])
+  @@index([respondentId])
+  @@index([status])
+  @@index([submittedAt])
+  @@map("survey_responses")
+}
+
+model SurveyAnswer {
+  id         String   @id @default(uuid()) @db.Uuid
+  responseId String   @map("response_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  answer     Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question Question       @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([responseId, questionId])
+  @@index([responseId])
+  @@index([questionId])
+  @@map("survey_answers")
 }

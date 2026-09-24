@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { SurveysModule } from './surveys/surveys.module.js';
 import { QuestionsModule } from './questions/questions.module.js';
+import { ResponsesModule } from './responses/responses.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { QuestionsModule } from './questions/questions.module.js';
     UsersModule,
     SurveysModule,
     QuestionsModule,
+    ResponsesModule,
   ],
   providers: [AppConfigService],
 })
