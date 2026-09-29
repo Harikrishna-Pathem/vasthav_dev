@@ -14,6 +14,14 @@ export const configuration = () => ({
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
   },
+  mail: {
+    host: process.env.MAIL_HOST?.trim() ?? '',
+    port: process.env.MAIL_PORT ? Number(process.env.MAIL_PORT) : 587,
+    secure: process.env.MAIL_SECURE === 'true',
+    user: process.env.MAIL_USER?.trim() ?? '',
+    password: process.env.MAIL_PASSWORD ?? '',
+    from: process.env.MAIL_FROM?.trim() ?? '',
+  },
 });
 
 export function validateEnvironment(config: Record<string, unknown>): Record<string, unknown> {
@@ -28,6 +36,12 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
     JWT_REFRESH_SECRET: Joi.string().min(32).required(),
     JWT_ACCESS_TTL: Joi.string().default('15m'),
     JWT_REFRESH_TTL: Joi.string().default('30d'),
+    MAIL_HOST: Joi.string().allow('').default(''),
+    MAIL_PORT: Joi.number().port().default(587),
+    MAIL_SECURE: Joi.boolean().default(false),
+    MAIL_USER: Joi.string().allow('').default(''),
+    MAIL_PASSWORD: Joi.string().allow('').default(''),
+    MAIL_FROM: Joi.string().allow('').default(''),
     LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   }).unknown(true);
   const { error, value } = schema.validate(config, { abortEarly: false });

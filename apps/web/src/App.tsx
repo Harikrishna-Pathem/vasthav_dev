@@ -14,6 +14,8 @@ import { EditQuestionPage } from './pages/surveys/EditQuestionPage';
 import { SurveyResponsesPage } from './pages/responses/SurveyResponsesPage';
 import { ResponseDetailsPage } from './pages/responses/ResponseDetailsPage';
 import { SurveyResultsPage } from './pages/results/SurveyResultsPage';
+import { RegistrationPage } from './pages/auth/RegistrationPage';
+import { RegistrationOtpPage } from './pages/auth/RegistrationOtpPage';
 
 export function App() {
   return (
@@ -22,6 +24,8 @@ export function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegistrationPage />} />
+          <Route path="/register/verify-otp" element={<RegistrationOtpPage />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardPage />} />

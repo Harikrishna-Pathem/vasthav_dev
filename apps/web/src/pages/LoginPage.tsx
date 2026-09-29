@@ -4,6 +4,7 @@ import {
 } from 'react';
 import {
   Navigate,
+  Link,
   useLocation,
   useNavigate,
 } from 'react-router-dom';
@@ -16,6 +17,7 @@ export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const registrationVerified = (location.state as { registrationVerified?: string } | null)?.registrationVerified;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -116,6 +118,12 @@ export function LoginPage() {
                   Sign in to manage your surveys and questions.
                 </p>
               </div>
+
+              {registrationVerified && (
+                <div role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {registrationVerified}
+                </div>
+              )}
 
               {/* Error */}
               {error && (
@@ -314,6 +322,13 @@ export function LoginPage() {
                   )}
                 </button>
               </form>
+
+              <p className="mt-6 text-center text-sm text-slate-500">
+                New to VASTHAV?{' '}
+                <Link to="/register" className="font-bold text-vasthav-700 transition hover:text-vasthav-800">
+                  Create New User
+                </Link>
+              </p>
             </div>
 
             {/* Footer */}

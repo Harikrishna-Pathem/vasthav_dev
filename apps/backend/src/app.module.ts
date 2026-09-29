@@ -11,6 +11,7 @@ import { UsersModule } from './users/users.module.js';
 import { SurveysModule } from './surveys/surveys.module.js';
 import { QuestionsModule } from './questions/questions.module.js';
 import { ResponsesModule } from './responses/responses.module.js';
+import { ConstituenciesModule } from './constituencies/constituencies.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ResponsesModule } from './responses/responses.module.js';
     SurveysModule,
     QuestionsModule,
     ResponsesModule,
+    ConstituenciesModule,
   ],
   providers: [AppConfigService],
 })
