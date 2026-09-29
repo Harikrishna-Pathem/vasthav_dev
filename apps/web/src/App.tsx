@@ -11,6 +11,9 @@ import { SurveyDetailsPage } from './pages/surveys/SurveyDetailsPage';
 import { SurveyQuestionsPage } from './pages/surveys/SurveyQuestionsPage';
 import { CreateQuestionPage } from './pages/surveys/CreateQuestionPage';
 import { EditQuestionPage } from './pages/surveys/EditQuestionPage';
+import { SurveyResponsesPage } from './pages/responses/SurveyResponsesPage';
+import { ResponseDetailsPage } from './pages/responses/ResponseDetailsPage';
+
 export function App() {
   return (
     <BrowserRouter>
@@ -29,6 +32,9 @@ export function App() {
             <Route path="/surveys/:id/questions" element={<SurveyQuestionsPage />} />
             <Route path="/surveys/:id/questions/new" element={<CreateQuestionPage />} />
             <Route path="/surveys/:id/questions/:questionId" element={<EditQuestionPage />} />
+            <Route path="/surveys/:id/responses" element={<SurveyResponsesPage />} />
+
+            <Route path="/responses/:id" element={<ResponseDetailsPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -37,7 +43,3 @@ export function App() {
     </BrowserRouter>
   );
 }
-
-
-
-
