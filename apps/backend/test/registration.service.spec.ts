@@ -59,8 +59,8 @@ const registrationDto = {
   constituencyId,
 };
 
-function hashOtp(otp: string) {
-  return createHmac('sha256', accessSecret)
+function registrationOtpHash(otp: string) {
+  return createHmac('sha256', configMock.accessTokenSecret)
     .update(`vasthav:registration-otp:${userId}:${otp}`)
     .digest('hex');
 }
@@ -81,7 +81,7 @@ function otpRecord(otp: string, overrides: Record<string, unknown> = {}) {
     id: '55555555-5555-4555-8555-555555555555',
     userId,
     purpose: OtpPurpose.REGISTRATION,
-    codeHash: hashOtp(otp),
+    codeHash: registrationOtpHash(otp),
     expiresAt: new Date(Date.now() + 60_000),
     attemptCount: 0,
     verifiedAt: null,
@@ -96,6 +96,7 @@ describe('RegistrationService', () => {
     jest.clearAllMocks();
     prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.user.findFirst.mockResolvedValue(pendingUser());
+    transactionMock.user.findFirst.mockResolvedValue(pendingUser());
     prismaMock.constituency.findUnique.mockResolvedValue({ id: constituencyId });
     prismaMock.$transaction.mockImplementation(
       async (callback: (transaction: typeof transactionMock) => Promise<unknown>) =>
@@ -176,10 +177,20 @@ describe('RegistrationService', () => {
   });
 
   it('verifies a valid registration OTP and activates the account', async () => {
-    transactionMock.otp.findFirst.mockResolvedValue(otpRecord('123456'));
+    const record = otpRecord('123456');
+    transactionMock.otp.findFirst.mockResolvedValue(record);
 
     await expect(service.verifyRegistrationOtp({ email: registrationDto.email, otp: '123456' }))
-      .resolves.toMatchObject({ message: expect.stringContaining('verified') });
+      .resolves.toEqual({ message: 'Email verified successfully. You can now log in.' });
+
+    expect(record.codeHash).toBe(registrationOtpHash('123456'));
+    expect(transactionMock.otp.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        userId,
+        purpose: OtpPurpose.REGISTRATION,
+        usedAt: null,
+      }),
+    }));
 
     expect(transactionMock.otp.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ usedAt: null, attemptCount: { lt: 5 } }),
@@ -192,13 +203,24 @@ describe('RegistrationService', () => {
   });
 
   it('rejects an invalid OTP and increments the attempt count', async () => {
-    transactionMock.otp.findFirst.mockResolvedValue(otpRecord('123456'));
+    const account = pendingUser();
+    const record = otpRecord('123456');
+    transactionMock.user.findFirst.mockResolvedValue(account);
+    transactionMock.otp.findFirst.mockResolvedValue(record);
     await expect(service.verifyRegistrationOtp({ email: registrationDto.email, otp: '000000' }))
-      .rejects.toBeInstanceOf(BadRequestException);
+      .rejects.toThrow(new BadRequestException('Invalid or expired OTP'));
     expect(transactionMock.otp.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: record.id,
+        usedAt: null,
+        attemptCount: { lt: 5 },
+        expiresAt: { gt: expect.any(Date) },
+      }),
       data: { attemptCount: { increment: 1 } },
     }));
+    expect(transactionMock.user.findFirst).toHaveBeenCalled();
     expect(transactionMock.user.updateMany).not.toHaveBeenCalled();
+    expect(account).toMatchObject({ isActive: false, emailVerifiedAt: null });
   });
 
   it('rejects an expired OTP without activating the user', async () => {
