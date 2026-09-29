@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { SurveyStatus, UserLanguage, UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -39,6 +39,12 @@ export class SurveysController {
   @ApiQuery({ name: 'language', required: false, type: String })
   list(@Query() query: ListSurveysQueryDto, @Query('language') language?: string) {
     return this.surveys.list(query, language);
+  }
+
+  @Get(':id/results')
+  @Permissions(Permission.SurveyRead)
+  getResults(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.surveys.getResults(id, user);
   }
 
   @Get(':id')

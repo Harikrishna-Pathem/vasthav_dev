@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
+  QuestionType,
   QuestionStatus,
   SurveyStatus,
   UserLanguage,
@@ -27,6 +28,14 @@ const surveySelect = {
   updatedAt: true,
   deletedAt: true,
 } as const;
+
+function isAnswered(value: Prisma.JsonValue) {
+  if (value === null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
 
 @Injectable()
 export class SurveysService {
@@ -154,6 +163,156 @@ export class SurveysService {
       language: resolved.language,
       translations: survey.translations,
     };
+  }
+
+  async getResults(id: string, user: AuthenticatedUser) {
+    const survey = await this.prisma.survey.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        createdBy: true,
+        questions: {
+          where: { deletedAt: null },
+          orderBy: { displayOrder: 'asc' },
+          select: {
+            displayOrder: true,
+            question: {
+              select: {
+                id: true,
+                code: true,
+                text: true,
+                questionType: true,
+                deletedAt: true,
+                options: {
+                  where: { deletedAt: null },
+                  orderBy: { displayOrder: 'asc' },
+                  select: { id: true, code: true, value: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          where: { status: 'SUBMITTED' },
+          select: {
+            answers: {
+              select: { questionId: true, answer: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!survey) throw new NotFoundException('Survey not found');
+    this.assertCanViewResults(user, survey);
+
+    const answersByQuestion = new Map<string, Prisma.JsonValue[]>();
+    for (const response of survey.responses) {
+      for (const answer of response.answers) {
+        const answers = answersByQuestion.get(answer.questionId) ?? [];
+        answers.push(answer.answer);
+        answersByQuestion.set(answer.questionId, answers);
+      }
+    }
+
+    const questions = survey.questions
+      .filter(({ question }) => question.deletedAt === null)
+      .map(({ question, displayOrder }) => {
+        const answers = (answersByQuestion.get(question.id) ?? []).filter(isAnswered);
+        const results = this.calculateQuestionResults(
+          question.questionType,
+          question.options,
+          answers,
+        );
+
+        return {
+          id: question.id,
+          code: question.code,
+          text: question.text,
+          type: question.questionType,
+          displayOrder,
+          results,
+        };
+      });
+
+    return {
+      survey: { id: survey.id, code: survey.code, name: survey.name },
+      totalResponses: survey.responses.length,
+      questions,
+    };
+  }
+
+  private assertCanViewResults(
+    user: AuthenticatedUser,
+    survey: { createdBy: string },
+  ) {
+    if (user.role === UserRole.ADMIN) return;
+    if (user.role === UserRole.SURVEYER && survey.createdBy === user.id) return;
+    throw new ForbiddenException('You do not have permission to view these survey results');
+  }
+
+  private calculateQuestionResults(
+    type: QuestionType,
+    options: Array<{ id: string; code: string; value: string }>,
+    answers: Prisma.JsonValue[],
+  ) {
+    switch (type) {
+      case 'TEXT':
+        return {
+          totalAnswered: answers.length,
+          values: answers.filter((value): value is string => typeof value === 'string'),
+        };
+      case 'NUMBER': {
+        const values = answers.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+        const total = values.length;
+        return {
+          count: total,
+          minimum: total ? Math.min(...values) : null,
+          maximum: total ? Math.max(...values) : null,
+          average: total ? values.reduce((sum, value) => sum + value, 0) / total : null,
+        };
+      }
+      case 'BOOLEAN': {
+        const values = answers.filter((value): value is boolean => typeof value === 'boolean');
+        const trueCount = values.filter(Boolean).length;
+        return { total: values.length, trueCount, falseCount: values.length - trueCount };
+      }
+      case 'SINGLE_CHOICE':
+      case 'MULTIPLE_CHOICE': {
+        const counts = new Map(options.map((option) => [option.id, 0]));
+        const optionsByCode = new Map(options.map((option) => [option.code, option.id]));
+        for (const answer of answers) {
+          const selections = type === 'MULTIPLE_CHOICE'
+            ? (Array.isArray(answer) ? answer : [])
+            : [answer];
+          for (const selection of selections) {
+            if (typeof selection !== 'string') continue;
+            const optionId = counts.has(selection) ? selection : optionsByCode.get(selection);
+            if (optionId) counts.set(optionId, (counts.get(optionId) ?? 0) + 1);
+          }
+        }
+        return {
+          ...(type === 'SINGLE_CHOICE'
+            ? { totalAnswers: answers.length }
+            : { totalResponses: answers.length }),
+          options: options.map((option) => {
+            const count = counts.get(option.id) ?? 0;
+            return {
+              code: option.code,
+              label: option.value,
+              count,
+              percentage: answers.length ? (count / answers.length) * 100 : 0,
+            };
+          }),
+        };
+      }
+      case 'DATE':
+        return { totalAnswered: answers.length };
+      default:
+        return { totalAnswered: answers.length };
+    }
   }
 
   async update(id: string, dto: UpdateSurveyDto, user: AuthenticatedUser) {
