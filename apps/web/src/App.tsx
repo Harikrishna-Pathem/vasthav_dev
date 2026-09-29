@@ -13,6 +13,7 @@ import { CreateQuestionPage } from './pages/surveys/CreateQuestionPage';
 import { EditQuestionPage } from './pages/surveys/EditQuestionPage';
 import { SurveyResponsesPage } from './pages/responses/SurveyResponsesPage';
 import { ResponseDetailsPage } from './pages/responses/ResponseDetailsPage';
+import { SurveyResultsPage } from './pages/results/SurveyResultsPage';
 
 export function App() {
   return (
@@ -33,6 +34,7 @@ export function App() {
             <Route path="/surveys/:id/questions/new" element={<CreateQuestionPage />} />
             <Route path="/surveys/:id/questions/:questionId" element={<EditQuestionPage />} />
             <Route path="/surveys/:id/responses" element={<SurveyResponsesPage />} />
+            <Route path="/surveys/:id/results" element={<SurveyResultsPage />} />
 
             <Route path="/responses/:id" element={<ResponseDetailsPage />} />
           </Route>

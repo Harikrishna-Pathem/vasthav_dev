@@ -469,6 +469,14 @@ export function SurveyDetailsPage() {
 
               <button
                 type="button"
+                onClick={() => navigate(`/surveys/${survey.id}/results`)}
+                className="btn-secondary w-full"
+              >
+                View results
+              </button>
+
+              <button
+                type="button"
                 onClick={() => navigate(`/surveys/${survey.id}/translations`)}
                 className="btn-secondary w-full"
               >
