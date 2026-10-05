@@ -18,7 +18,7 @@ import { ResponseDetailsPage } from './pages/responses/ResponseDetailsPage';
 import { SurveyResultsPage } from './pages/results/SurveyResultsPage';
 import { RegistrationPage } from './pages/auth/RegistrationPage';
 import { RegistrationOtpPage } from './pages/auth/RegistrationOtpPage';
-import { ForgotPasswordPlaceholderPage } from './pages/ForgotPasswordPlaceholderPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 
 export function App() {
   return (
@@ -27,7 +27,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPlaceholderPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/register" element={<RegistrationPage />} />
           <Route path="/register/verify-otp" element={<RegistrationOtpPage />} />
 

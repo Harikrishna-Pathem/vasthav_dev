@@ -25,11 +25,25 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token, { secret: this.config.accessTokenSecret });
+      if (!payload.sid) {
+        throw new UnauthorizedException('Access token session is invalid');
+      }
       const user = await this.prisma.user.findFirst({ where: { id: payload.sub, deletedAt: null } });
 
       if (!user || !user.isActive || !user.emailVerifiedAt) {
         throw new UnauthorizedException('Account is inactive, unverified, or no longer available');
       }
+
+      const session = await this.prisma.refreshToken.findFirst({
+        where: {
+          id: payload.sid,
+          userId: user.id,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: { id: true },
+      });
+      if (!session) throw new UnauthorizedException('Access token session is invalid or revoked');
 
       request.user = { id: user.id, email: user.email, role: user.role, preferredLanguage: (payload.preferredLanguage ?? user.preferredLanguage ?? UserLanguage.en) as UserLanguage };
       return true;

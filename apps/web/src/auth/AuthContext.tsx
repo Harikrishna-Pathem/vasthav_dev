@@ -97,7 +97,13 @@ export function AuthProvider({
 
         if (!isUserRole(currentUser.role)) throw new Error('Invalid account role');
         setUser(currentUser);
-        saveSession(currentAccessToken ?? '', currentRefreshToken ?? '', currentUser, rememberMe);
+        // The API response interceptor may have rotated tokens while fetching /auth/me.
+        saveSession(
+          getAccessToken() ?? currentAccessToken ?? '',
+          getRefreshToken() ?? currentRefreshToken ?? '',
+          currentUser,
+          rememberMe,
+        );
       } catch {
         handleLogout();
       } finally {

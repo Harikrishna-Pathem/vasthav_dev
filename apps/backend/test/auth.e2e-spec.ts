@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma.service.js';
+import { RegistrationService } from '../src/auth/registration.service.js';
 
 process.env.CORS_ORIGINS = 'http://localhost:5173';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
@@ -29,6 +30,8 @@ describe('Authentication API', () => {
   };
 
   const prismaMock = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn(),
     user: {
       findFirst: jest.fn(),
     },
@@ -40,7 +43,17 @@ describe('Authentication API', () => {
     },
   };
 
+  const registrationMock = {
+    register: jest.fn(),
+    resendRegistrationOtp: jest.fn(),
+    verifyRegistrationOtp: jest.fn(),
+    requestPasswordReset: jest.fn(),
+    verifyPasswordResetOtp: jest.fn(),
+    resetPassword: jest.fn(),
+  };
+
   beforeAll(async () => {
+    prismaMock.$transaction.mockImplementation((callback: (transaction: typeof prismaMock) => unknown) => callback(prismaMock));
     user.passwordHash = await bcrypt.hash('correct horse battery staple', 12);
     prismaMock.user.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
       if (where.id === user.id && where.deletedAt === null) return user;
@@ -55,11 +68,14 @@ describe('Authentication API', () => {
     }));
     prismaMock.refreshToken.update.mockResolvedValue({ id: 'session-id' });
     prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.refreshToken.findFirst.mockResolvedValue({ id: 'session-id' });
 
     const { AppModule } = await import('../src/app.module.js');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
+      .overrideProvider(RegistrationService)
+      .useValue(registrationMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -119,6 +135,12 @@ describe('Authentication API', () => {
       .post('/auth/logout')
       .send({ refreshToken })
       .expect(204);
+
+    prismaMock.refreshToken.findFirst.mockResolvedValueOnce(null);
+    await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(401);
   });
 
   it('rejects invalid credentials and non-public protected access', async () => {
@@ -136,5 +158,40 @@ describe('Authentication API', () => {
       });
 
     await request(app.getHttpServer()).get('/auth/me').expect(401);
+  });
+
+  it('exposes the password reset request, verify, and reset endpoints', async () => {
+    registrationMock.requestPasswordReset.mockResolvedValue({
+      message: 'If an account exists for this email, a password reset code may be sent shortly.',
+    });
+    registrationMock.verifyPasswordResetOtp.mockResolvedValue({
+      message: 'Verification successful. Set your new password.',
+      resetToken: 'a'.repeat(64),
+    });
+    registrationMock.resetPassword.mockResolvedValue({ message: 'Password updated successfully.' });
+
+    await request(app.getHttpServer())
+      .post('/auth/password-reset/request')
+      .send({ email: 'admin@example.com' })
+      .expect(200)
+      .expect(({ body }) => expect(body.message).toContain('If an account exists'));
+    await request(app.getHttpServer())
+      .post('/auth/password-reset/verify')
+      .send({ email: 'admin@example.com', otp: '123456' })
+      .expect(200)
+      .expect(({ body }) => expect(body.resetToken).toBe('a'.repeat(64)));
+    await request(app.getHttpServer())
+      .post('/auth/password-reset/reset')
+      .send({ resetToken: 'a'.repeat(64), newPassword: 'new secure password value', confirmNewPassword: 'new secure password value' })
+      .expect(200)
+      .expect(({ body }) => expect(body.message).toContain('Password updated'));
+
+    expect(registrationMock.requestPasswordReset).toHaveBeenCalledWith('admin@example.com');
+    expect(registrationMock.verifyPasswordResetOtp).toHaveBeenCalledWith({ email: 'admin@example.com', otp: '123456' });
+    expect(registrationMock.resetPassword).toHaveBeenCalledWith({
+      resetToken: 'a'.repeat(64),
+      newPassword: 'new secure password value',
+      confirmNewPassword: 'new secure password value',
+    });
   });
 });

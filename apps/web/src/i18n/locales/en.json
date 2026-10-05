@@ -31,5 +31,38 @@
   },
   "surveys": {
     "title": "Surveys"
+  },
+  "passwordReset": {
+    "title": "Password recovery",
+    "emailHeading": "Forgot your password?",
+    "emailDescription": "Enter your account email. If an account exists, we will send a reset code.",
+    "otpHeading": "Check your email",
+    "otpDescription": "Enter the six-digit password reset code.",
+    "passwordHeading": "Choose a new password",
+    "passwordDescription": "Your password must be between 12 and 128 characters.",
+    "requestCode": "Send reset code",
+    "sending": "Sending...",
+    "verifyCode": "Verify code",
+    "verifying": "Verifying...",
+    "resendCode": "Send another code",
+    "otpLabel": "Email verification code",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "resetButton": "Update password",
+    "resetting": "Updating password...",
+    "verified": "Your email code is verified.",
+    "continue": "Continue to new password",
+    "backToCode": "Back to verification",
+    "changeEmail": "Use a different email",
+    "backToLogin": "Back to login",
+    "successHeading": "Password updated",
+    "successMessage": "You can now log in with your new password.",
+    "emailInvalid": "Enter a valid email address.",
+    "otpInvalid": "Enter the six-digit code from your email.",
+    "passwordRequired": "Enter a password between 12 and 128 characters.",
+    "passwordMismatch": "The passwords do not match.",
+    "requestError": "We could not request a reset code. Please try again.",
+    "otpError": "We could not verify that code. Please request a new one.",
+    "resetError": "We could not update your password. Please try again."
   }
 }

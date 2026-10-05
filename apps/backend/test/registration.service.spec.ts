@@ -1,18 +1,21 @@
 import { BadRequestException, ConflictException, ValidationPipe } from '@nestjs/common';
-import { OtpPurpose, UserRole } from '@prisma/client';
-import { createHmac } from 'node:crypto';
+import { OtpPurpose, Prisma, UserRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { createHash, createHmac } from 'node:crypto';
 
 import { AppConfigService } from '../src/config/app-config.service.js';
 import { PrismaService } from '../src/database/prisma.service.js';
 import { EmailService } from '../src/email/email.service.js';
 import { RegistrationService } from '../src/auth/registration.service.js';
 import { RegisterUserDto } from '../src/auth/dto/register-user.dto.js';
+import { ResetPasswordDto } from '../src/auth/dto/reset-password.dto.js';
 
 const userId = 'd7d897c4-7ec7-47ce-b515-40191feb2310';
 const constituencyId = '8c7955c1-2c1a-48bc-b4bf-ace1e17d2a45';
 const accessSecret = 'a'.repeat(40);
 
 const transactionMock = {
+  $queryRaw: jest.fn(),
   user: {
     create: jest.fn(),
     findFirst: jest.fn(),
@@ -20,7 +23,11 @@ const transactionMock = {
   },
   otp: {
     create: jest.fn(),
+    count: jest.fn(),
     findFirst: jest.fn(),
+    updateMany: jest.fn(),
+  },
+  refreshToken: {
     updateMany: jest.fn(),
   },
 };
@@ -41,6 +48,7 @@ const prismaMock = {
 
 const emailMock = {
   sendRegistrationOtp: jest.fn(),
+  sendPasswordResetOtp: jest.fn(),
 };
 
 const configMock = { accessTokenSecret: accessSecret };
@@ -65,6 +73,12 @@ function registrationOtpHash(otp: string) {
     .digest('hex');
 }
 
+function passwordResetOtpHash(otp: string) {
+  return createHmac('sha256', configMock.accessTokenSecret)
+    .update(`vasthav:password-reset-otp:${userId}:${otp}`)
+    .digest('hex');
+}
+
 function pendingUser() {
   return {
     id: userId,
@@ -73,6 +87,14 @@ function pendingUser() {
     role: UserRole.USER,
     isActive: false,
     emailVerifiedAt: null,
+  };
+}
+
+function verifiedUser() {
+  return {
+    ...pendingUser(),
+    isActive: true,
+    emailVerifiedAt: new Date(),
   };
 }
 
@@ -87,6 +109,14 @@ function otpRecord(otp: string, overrides: Record<string, unknown> = {}) {
     verifiedAt: null,
     usedAt: null,
     createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+function passwordResetOtpRecord(otp: string, overrides: Record<string, unknown> = {}) {
+  return {
+    ...otpRecord(otp, { purpose: OtpPurpose.PASSWORD_RESET }),
+    codeHash: passwordResetOtpHash(otp),
     ...overrides,
   };
 }
@@ -107,7 +137,11 @@ describe('RegistrationService', () => {
     transactionMock.otp.findFirst.mockResolvedValue(otpRecord('123456'));
     transactionMock.otp.updateMany.mockResolvedValue({ count: 1 });
     transactionMock.user.updateMany.mockResolvedValue({ count: 1 });
+    transactionMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
     emailMock.sendRegistrationOtp.mockResolvedValue(undefined);
+    emailMock.sendPasswordResetOtp.mockResolvedValue(undefined);
+    transactionMock.otp.count.mockResolvedValue(0);
+    transactionMock.$queryRaw.mockResolvedValue([]);
   });
 
   it('registers an inactive, unverified USER and never returns the OTP or password hash', async () => {
@@ -256,5 +290,204 @@ describe('RegistrationService', () => {
     });
     expect(transactionMock.otp.create).toHaveBeenCalled();
     expect(emailMock.sendRegistrationOtp).toHaveBeenCalled();
+  });
+
+  it('requests a password reset with a hashed OTP and a generic response', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(verifiedUser());
+    transactionMock.otp.findFirst.mockResolvedValue(null);
+    const result = await service.requestPasswordReset(registrationDto.email);
+    const createCall = transactionMock.otp.create.mock.calls[0][0];
+    const sentOtp = emailMock.sendPasswordResetOtp.mock.calls[0][2] as string;
+
+    expect(result.message).toBe('If an account exists for this email, a password reset code may be sent shortly.');
+    expect(prismaMock.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ isActive: true, emailVerifiedAt: { not: null }, deletedAt: null }),
+    }));
+    expect(createCall.data).toMatchObject({ userId, purpose: OtpPurpose.PASSWORD_RESET });
+    expect(createCall.data.codeHash).toBe(passwordResetOtpHash(sentOtp));
+    expect(createCall.data.codeHash).not.toBe(sentOtp);
+    expect(sentOtp).toMatch(/^\d{6}$/);
+    expect(emailMock.sendPasswordResetOtp).toHaveBeenCalledWith(
+      registrationDto.email,
+      registrationDto.displayName,
+      sentOtp,
+    );
+  });
+
+  it('returns the same reset response for an unknown email without sending email', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(null);
+
+    await expect(service.requestPasswordReset('missing@example.com')).resolves.toEqual({
+      message: 'If an account exists for this email, a password reset code may be sent shortly.',
+    });
+    expect(transactionMock.otp.create).not.toHaveBeenCalled();
+    expect(emailMock.sendPasswordResetOtp).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reset response generic when email delivery fails', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(verifiedUser());
+    transactionMock.otp.findFirst.mockResolvedValue(null);
+    emailMock.sendPasswordResetOtp.mockRejectedValue(new Error('SMTP unavailable'));
+
+    await expect(service.requestPasswordReset(registrationDto.email)).resolves.toEqual({
+      message: 'If an account exists for this email, a password reset code may be sent shortly.',
+    });
+  });
+
+  it('enforces password reset resend cooldown and hourly request cap generically', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(verifiedUser());
+    transactionMock.otp.findFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 10_000) });
+    await expect(service.requestPasswordReset(registrationDto.email)).resolves.toMatchObject({
+      message: expect.stringContaining('If an account exists'),
+    });
+    expect(transactionMock.otp.create).not.toHaveBeenCalled();
+
+    transactionMock.otp.findFirst.mockResolvedValue(null);
+    transactionMock.otp.count.mockResolvedValue(5);
+    await expect(service.requestPasswordReset(registrationDto.email)).resolves.toMatchObject({
+      message: expect.stringContaining('If an account exists'),
+    });
+    expect(transactionMock.otp.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  });
+
+  it('rejects a wrong password reset OTP and increments its attempt count', async () => {
+    transactionMock.user.findFirst.mockResolvedValue(verifiedUser());
+    const record = passwordResetOtpRecord('123456');
+    transactionMock.otp.findFirst.mockResolvedValue(record);
+
+    await expect(service.verifyPasswordResetOtp({ email: registrationDto.email, otp: '000000' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(transactionMock.otp.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: record.id, attemptCount: { lt: 5 } }),
+      data: { attemptCount: { increment: 1 } },
+    }));
+  });
+
+  it('rejects expired, exhausted, and already verified password reset OTPs', async () => {
+    transactionMock.user.findFirst.mockResolvedValue(verifiedUser());
+    for (const record of [
+      passwordResetOtpRecord('123456', { expiresAt: new Date(Date.now() - 1) }),
+      passwordResetOtpRecord('123456', { attemptCount: 5 }),
+      passwordResetOtpRecord('123456', { verifiedAt: new Date() }),
+    ]) {
+      transactionMock.otp.findFirst.mockResolvedValue(
+        record.verifiedAt === null && record.usedAt === null ? record : null,
+      );
+      await expect(service.verifyPasswordResetOtp({ email: registrationDto.email, otp: '123456' }))
+        .rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(transactionMock.otp.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns a one-time reset authorization only after verifying the OTP', async () => {
+    transactionMock.user.findFirst.mockResolvedValue(verifiedUser());
+    const record = passwordResetOtpRecord('123456');
+    transactionMock.otp.findFirst.mockResolvedValue(record);
+
+    const result = await service.verifyPasswordResetOtp({ email: registrationDto.email, otp: '123456' });
+    expect(result).toMatchObject({ message: 'Verification successful. Set your new password.' });
+    expect(result.resetToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(transactionMock.otp.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: record.id, verifiedAt: null, usedAt: null }),
+      data: { verifiedAt: expect.any(Date), codeHash: createHash('sha256').update(result.resetToken).digest('hex') },
+    }));
+    expect(JSON.stringify(result)).not.toContain(record.codeHash);
+  });
+
+  it('rejects password reset without a verified authorization', async () => {
+    transactionMock.otp.findFirst.mockResolvedValue(null);
+    await expect(service.resetPassword({
+      resetToken: 'a'.repeat(64),
+      newPassword: 'new secure password value',
+      confirmNewPassword: 'new secure password value',
+    })).rejects.toThrow('Invalid or expired password reset authorization');
+    expect(transactionMock.user.updateMany).not.toHaveBeenCalled();
+    expect(transactionMock.refreshToken.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired or already consumed reset authorization', async () => {
+    transactionMock.otp.findFirst.mockResolvedValue(null);
+    await expect(service.resetPassword({
+      resetToken: 'e'.repeat(64),
+      newPassword: 'new secure password value',
+      confirmNewPassword: 'new secure password value',
+    })).rejects.toThrow('Invalid or expired password reset authorization');
+    expect(transactionMock.otp.updateMany).not.toHaveBeenCalled();
+    expect(transactionMock.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('changes the password, consumes authorization, and revokes refresh sessions', async () => {
+    const token = 'b'.repeat(64);
+    const hash = createHash('sha256').update(token).digest('hex');
+    transactionMock.otp.findFirst.mockResolvedValue({ id: 'reset-otp-id', userId });
+    transactionMock.otp.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(service.resetPassword({
+      resetToken: token,
+      newPassword: 'new secure password value',
+      confirmNewPassword: 'new secure password value',
+    })).resolves.toMatchObject({ message: 'Password updated successfully. Please log in with your new password.' });
+
+    const userUpdate = transactionMock.user.updateMany.mock.calls[0][0];
+    expect(await bcrypt.compare('new secure password value', userUpdate.data.passwordHash)).toBe(true);
+    expect(userUpdate.data.passwordHash).not.toBe('new secure password value');
+    expect(transactionMock.otp.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'reset-otp-id', codeHash: hash, usedAt: null }),
+      data: { usedAt: expect.any(Date) },
+    }));
+    expect(transactionMock.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    }));
+    expect(transactionMock.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows only one of two concurrent uses of the same reset authorization', async () => {
+    const token = 'f'.repeat(64);
+    transactionMock.otp.findFirst.mockResolvedValue({ id: 'reset-otp-id', userId });
+    transactionMock.otp.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const resetRequest = {
+      resetToken: token,
+      newPassword: 'new secure password value',
+      confirmNewPassword: 'new secure password value',
+    };
+
+    const results = await Promise.allSettled([
+      service.resetPassword(resetRequest),
+      service.resetPassword(resetRequest),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(transactionMock.user.updateMany).toHaveBeenCalledTimes(1);
+    expect(transactionMock.refreshToken.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects password confirmation mismatch without consuming a reset authorization', async () => {
+    await expect(service.resetPassword({
+      resetToken: 'c'.repeat(64),
+      newPassword: 'new secure password value',
+      confirmNewPassword: 'different secure password value',
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('validates reset token shape and password length at the request boundary', async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
+    const transform = (body: unknown) => pipe.transform(body, {
+      type: 'body',
+      metatype: ResetPasswordDto,
+      data: '',
+    });
+    await expect(transform({ resetToken: 'short', newPassword: 'new secure password value', confirmNewPassword: 'new secure password value' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(transform({ resetToken: 'd'.repeat(64), newPassword: 'short', confirmNewPassword: 'short' }))
+      .rejects.toBeInstanceOf(BadRequestException);
   });
 });

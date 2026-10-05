@@ -1,8 +1,11 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterUserDto } from './dto/register-user.dto.js';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ResendRegistrationOtpDto } from './dto/resend-registration-otp.dto.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { VerifyRegistrationOtpDto } from './dto/verify-registration-otp.dto.js';
@@ -41,6 +44,36 @@ export class AuthController {
   @ApiOperation({ summary: 'Resend a registration email verification code' })
   resendRegistrationOtp(@Body() dto: ResendRegistrationOtpDto) {
     return this.registration.resendRegistrationOtp(dto);
+  }
+
+  @Public()
+  @Post('password-reset/request')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Request a password reset email code' })
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.registration.requestPasswordReset(dto.email);
+  }
+
+  @Public()
+  @Post('password-reset/verify')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Verify a password reset email code' })
+  verifyPasswordResetOtp(@Body() dto: VerifyRegistrationOtpDto) {
+    return this.registration.verifyPasswordResetOtp(dto);
+  }
+
+  @Public()
+  @Post('password-reset/reset')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Set a new password using a verified reset authorization' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.registration.resetPassword(dto);
   }
 
   @Public()

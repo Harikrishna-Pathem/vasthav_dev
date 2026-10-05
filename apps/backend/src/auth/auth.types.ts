@@ -11,6 +11,7 @@ export interface AccessTokenPayload {
   sub: string;
   email: string;
   role: UserRole;
+  sid: string;
   preferredLanguage?: UserLanguage;
 }
 

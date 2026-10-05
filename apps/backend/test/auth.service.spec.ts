@@ -9,11 +9,22 @@ import { LoginDto } from '../src/auth/dto/login.dto.js';
 
 describe('AuthService', () => {
   const user = { id: '9ec2633d-1e7e-4c54-a84d-29a1d5d8d3cc', email: 'admin@example.com', role: UserRole.ADMIN, isActive: true, emailVerifiedAt: new Date(), deletedAt: null, passwordHash: '' };
-  const prismaMock = { user: { findFirst: jest.fn() }, refreshToken: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findFirst: jest.fn() } };
+  const transactionMock = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    refreshToken: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findFirst: jest.fn() },
+  };
+  const prismaMock = {
+    $transaction: jest.fn((callback: (transaction: typeof transactionMock) => unknown) => callback(transactionMock)),
+    user: { findFirst: jest.fn() },
+    refreshToken: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findFirst: jest.fn() },
+  };
   const jwtMock = { signAsync: jest.fn(), verifyAsync: jest.fn() };
   const configMock = { accessTokenSecret: 'a'.repeat(40), refreshTokenSecret: 'b'.repeat(40), accessTokenTtl: '15m', refreshTokenTtl: '30d' };
   const service = new AuthService(prismaMock as unknown as PrismaService, jwtMock as unknown as JwtService, configMock as AppConfigService);
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    transactionMock.$queryRaw.mockResolvedValue([]);
+  });
 
   it('issues access and refresh tokens for an active user with valid credentials', async () => {
     user.passwordHash = await bcrypt.hash('correct horse battery staple', 4);
@@ -22,7 +33,7 @@ describe('AuthService', () => {
     jwtMock.signAsync.mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
     await expect(service.login({ email: user.email, password: 'correct horse battery staple' })).resolves.toMatchObject({ accessToken: 'access-token', refreshToken: 'refresh-token', tokenType: 'Bearer' });
     expect(prismaMock.refreshToken.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'session-id' } }));
-    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.ADMIN }), expect.objectContaining({ secret: configMock.accessTokenSecret, expiresIn: configMock.accessTokenTtl }));
+    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.ADMIN, sid: 'session-id' }), expect.objectContaining({ secret: configMock.accessTokenSecret, expiresIn: configMock.accessTokenTtl }));
   });
 
   it.each([
@@ -125,25 +136,38 @@ describe('AuthService', () => {
       email: user.email,
       role: UserRole.USER,
     });
-    prismaMock.refreshToken.findFirst.mockResolvedValue({
+    transactionMock.refreshToken.findFirst.mockResolvedValue({
       id: 'session-id',
       userId: user.id,
       revokedAt: null,
       expiresAt: new Date(Date.now() + 60_000),
       user: { ...user, role: UserRole.ADMIN },
     });
-    prismaMock.refreshToken.update.mockResolvedValue({ id: 'session-id' });
-    prismaMock.refreshToken.create.mockResolvedValue({ id: 'new-session-id' });
+    transactionMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    transactionMock.refreshToken.create.mockResolvedValue({ id: 'new-session-id' });
+    transactionMock.refreshToken.update.mockResolvedValue({ id: 'new-session-id' });
     jwtMock.signAsync.mockResolvedValueOnce('new-access').mockResolvedValueOnce('new-refresh');
 
     const result = await service.refresh(refreshToken);
 
     expect(result.user.role).toBe(UserRole.ADMIN);
     expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.ADMIN }), expect.any(Object));
-    expect(prismaMock.refreshToken.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'session-id' },
+    expect(transactionMock.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'session-id', userId: user.id, revokedAt: null, tokenHash: expect.any(String) }),
       data: { revokedAt: expect.any(Date) },
     }));
+    expect(transactionMock.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transactionMock.refreshToken.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a refresh token when another operation already consumed it', async () => {
+    jwtMock.verifyAsync.mockResolvedValue({ sub: user.id, sid: 'session-id' });
+    transactionMock.refreshToken.findFirst.mockResolvedValue({ id: 'session-id', userId: user.id, user });
+    transactionMock.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.refresh('already-consumed-token')).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(transactionMock.refreshToken.create).not.toHaveBeenCalled();
   });
 
   it('revokes a refresh token during logout', async () => {

@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { AppConfigService } from '../config/app-config.service.js';
@@ -22,23 +23,61 @@ export class AuthService {
     let payload: RefreshTokenPayload;
     try { payload = await this.jwt.verifyAsync<RefreshTokenPayload>(refreshToken, { secret: this.config.refreshTokenSecret }); }
     catch { throw new UnauthorizedException('Refresh token is invalid or expired'); }
-    const record = await this.prisma.refreshToken.findFirst({ where: { id: payload.sid, tokenHash: this.hash(refreshToken), userId: payload.sub, revokedAt: null, expiresAt: { gt: new Date() }, user: { isActive: true, deletedAt: null, emailVerifiedAt: { not: null } } }, include: { user: true } });
-    if (!record) throw new UnauthorizedException('Refresh token is invalid or revoked');
-    await this.prisma.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
-    return this.issueTokens({ id: record.user.id, email: record.user.email, role: record.user.role });
+    const rotated = await this.prisma.$transaction(async (transaction) => {
+      // Password resets take this same lock before revoking sessions. That orders
+      // refresh rotation against reset so no new session can escape revocation.
+      await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users WHERE id = ${payload.sub}::uuid FOR UPDATE
+      `;
+      const now = new Date();
+      const record = await transaction.refreshToken.findFirst({
+        where: {
+          id: payload.sid,
+          tokenHash: this.hash(refreshToken),
+          userId: payload.sub,
+          revokedAt: null,
+          expiresAt: { gt: now },
+          user: { isActive: true, deletedAt: null, emailVerifiedAt: { not: null } },
+        },
+        include: { user: true },
+      });
+      if (!record) return null;
+
+      const consumed = await transaction.refreshToken.updateMany({
+        where: {
+          id: record.id,
+          tokenHash: this.hash(refreshToken),
+          userId: record.user.id,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { revokedAt: now },
+      });
+      if (consumed.count !== 1) return null;
+
+      return this.issueTokens(
+        { id: record.user.id, email: record.user.email, role: record.user.role },
+        transaction,
+      );
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (!rotated) throw new UnauthorizedException('Refresh token is invalid or revoked');
+    return rotated;
   }
   async logout(refreshToken: string): Promise<void> {
     await this.prisma.refreshToken.updateMany({ where: { tokenHash: this.hash(refreshToken), revokedAt: null }, data: { revokedAt: new Date() } });
   }
-  private async issueTokens(user: AuthenticatedUser) {
-    const session = await this.prisma.refreshToken.create({ data: { userId: user.id, tokenHash: 'pending', expiresAt: this.expiry(this.config.refreshTokenTtl) } });
-    const accessPayload: AccessTokenPayload = { sub: user.id, email: user.email, role: user.role, preferredLanguage: user.preferredLanguage ?? undefined };
+  private async issueTokens(
+    user: AuthenticatedUser,
+    database: Pick<Prisma.TransactionClient, 'refreshToken'> = this.prisma,
+  ) {
+    const session = await database.refreshToken.create({ data: { userId: user.id, tokenHash: 'pending', expiresAt: this.expiry(this.config.refreshTokenTtl) } });
+    const accessPayload: AccessTokenPayload = { sub: user.id, email: user.email, role: user.role, sid: session.id, preferredLanguage: user.preferredLanguage ?? undefined };
     const refreshPayload: RefreshTokenPayload = { ...accessPayload, sid: session.id };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(accessPayload, { secret: this.config.accessTokenSecret, expiresIn: this.config.accessTokenTtl }),
       this.jwt.signAsync(refreshPayload, { secret: this.config.refreshTokenSecret, expiresIn: this.config.refreshTokenTtl }),
     ]);
-    await this.prisma.refreshToken.update({ where: { id: session.id }, data: { tokenHash: this.hash(refreshToken) } });
+    await database.refreshToken.update({ where: { id: session.id }, data: { tokenHash: this.hash(refreshToken) } });
     return { accessToken, refreshToken, tokenType: 'Bearer', expiresIn: this.config.accessTokenTtl, user: { id: user.id, email: user.email, role: user.role } };
   }
   private hash(value: string): string { return createHash('sha256').update(value).digest('hex'); }

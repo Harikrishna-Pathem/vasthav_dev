@@ -17,6 +17,17 @@ export class EmailService {
     });
   }
 
+  sendPasswordResetOtp(to: string, displayName: string, otp: string) {
+    return this.sendOtpEmail({
+      to,
+      displayName,
+      otp,
+      subject: 'Reset your VASTHAV password',
+      heading: 'Password reset requested',
+      instructions: 'Use this verification code to reset your password.',
+    });
+  }
+
   private async sendOtpEmail({
     to,
     displayName,

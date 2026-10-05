@@ -33,3 +33,32 @@ export async function refresh(refreshToken: string): Promise<LoginResponse> {
   });
   return response.data;
 }
+
+export async function requestPasswordReset(email: string): Promise<{ message: string }> {
+  const response = await apiClient.post<{ message: string }>('/auth/password-reset/request', { email });
+  return response.data;
+}
+
+export async function verifyPasswordResetOtp(
+  email: string,
+  otp: string,
+): Promise<{ message: string; resetToken: string }> {
+  const response = await apiClient.post<{ message: string; resetToken: string }>(
+    '/auth/password-reset/verify',
+    { email, otp },
+  );
+  return response.data;
+}
+
+export async function resetPassword(
+  resetToken: string,
+  newPassword: string,
+  confirmNewPassword: string,
+): Promise<{ message: string }> {
+  const response = await apiClient.post<{ message: string }>('/auth/password-reset/reset', {
+    resetToken,
+    newPassword,
+    confirmNewPassword,
+  });
+  return response.data;
+}

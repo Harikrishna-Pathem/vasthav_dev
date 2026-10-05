@@ -53,6 +53,7 @@ describe('User administration API', () => {
     },
     refreshToken: {
       updateMany: jest.fn(),
+      findFirst: jest.fn(),
     },
   };
 
@@ -89,6 +90,7 @@ describe('User administration API', () => {
     }));
     prismaMock.user.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.refreshToken.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id }));
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
@@ -102,8 +104,8 @@ describe('User administration API', () => {
     await app.init();
 
     const jwtService = app.get(JwtService);
-    adminToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
-    userToken = jwtService.sign({ sub: plainUser.id, email: plainUser.email, role: plainUser.role }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    adminToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role, sid: 'admin-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    userToken = jwtService.sign({ sub: plainUser.id, email: plainUser.email, role: plainUser.role, sid: 'user-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
   });
 
   afterAll(async () => {

@@ -77,6 +77,24 @@ describe('AuthProvider session restoration', () => {
     expect(localStorage.getItem('vasthav_refresh_token')).toBe('rotated-refresh');
   });
 
+  it('keeps tokens rotated by the API interceptor during session restoration', async () => {
+    const actualUser = { id: 'admin-id', email: 'admin@example.com', role: 'ADMIN' as const };
+    localStorage.setItem('vasthav_access_token', 'old-access');
+    localStorage.setItem('vasthav_refresh_token', 'old-refresh');
+    localStorage.setItem('vasthav_remember_me', 'true');
+    vi.mocked(authService.getCurrentUser).mockImplementation(async () => {
+      localStorage.setItem('vasthav_access_token', 'interceptor-access');
+      localStorage.setItem('vasthav_refresh_token', 'interceptor-refresh');
+      return actualUser;
+    });
+
+    render(<AuthProvider><SessionRole /></AuthProvider>);
+
+    expect(await screen.findByText('ADMIN')).toBeInTheDocument();
+    expect(localStorage.getItem('vasthav_access_token')).toBe('interceptor-access');
+    expect(localStorage.getItem('vasthav_refresh_token')).toBe('interceptor-refresh');
+  });
+
   it('clears the session when refresh-token rotation fails', async () => {
     localStorage.setItem('vasthav_access_token', 'expired-access');
     localStorage.setItem('vasthav_refresh_token', 'revoked-refresh');
