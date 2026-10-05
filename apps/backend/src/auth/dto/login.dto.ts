@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { UserRole } from '@prisma/client';
+import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -11,4 +12,9 @@ export class LoginDto {
   @MinLength(12)
   @MaxLength(128)
   password!: string;
+
+  @ApiProperty({ enum: UserRole, required: false, description: 'Optional login-mode preference; the account role remains authoritative.' })
+  @IsOptional()
+  @IsEnum(UserRole)
+  loginAs?: UserRole;
 }

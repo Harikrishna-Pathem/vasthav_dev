@@ -22,6 +22,7 @@ describe('Phase 4 survey and question management', () => {
     displayName: 'Primary Admin',
     role: UserRole.ADMIN,
     isActive: true,
+    emailVerifiedAt: new Date(),
     deletedAt: null,
   };
 
@@ -31,6 +32,7 @@ describe('Phase 4 survey and question management', () => {
     displayName: 'Surveyer One',
     role: UserRole.SURVEYER,
     isActive: true,
+    emailVerifiedAt: new Date(),
     deletedAt: null,
   };
 
@@ -40,6 +42,7 @@ describe('Phase 4 survey and question management', () => {
     displayName: 'Plain User',
     role: UserRole.USER,
     isActive: true,
+    emailVerifiedAt: new Date(),
     deletedAt: null,
   };
 

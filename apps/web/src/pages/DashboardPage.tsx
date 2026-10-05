@@ -22,6 +22,12 @@ const cards = [
 export function DashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const dashboardTitle = user?.role === 'ADMIN'
+    ? t('dashboard.adminTitle')
+    : user?.role === 'SURVEYER'
+      ? t('dashboard.headTitle')
+      : t('dashboard.userTitle');
+  const canManageSurveys = user?.role === 'ADMIN' || user?.role === 'SURVEYER';
 
   return (
     <div className="page-container py-8 sm:py-10">
@@ -31,45 +37,48 @@ export function DashboardPage() {
         </p>
 
         <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-          {t('dashboard.title')}
+          {dashboardTitle}
         </h1>
 
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
-          Welcome back, {user?.email}. Manage surveys, questions and
-          multilingual content from one place.
+          {canManageSurveys
+            ? `Welcome back, ${user?.email}. Manage surveys, questions and multilingual content from one place.`
+            : `Welcome back, ${user?.email}. Your VASTHAV account is ready.`}
         </p>
       </div>
 
-      <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => (
-          <div
-            key={card.title}
-            className="card p-6 transition hover:-translate-y-0.5 hover:shadow-soft"
-          >
-            <div className="mb-6 flex items-center justify-between">
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-vasthav-50 text-lg font-bold text-vasthav-700">
-                {card.title.charAt(0)}
+      {canManageSurveys && (
+        <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {cards.map((card) => (
+            <div
+              key={card.title}
+              className="card p-6 transition hover:-translate-y-0.5 hover:shadow-soft"
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <div className="grid h-11 w-11 place-items-center rounded-xl bg-vasthav-50 text-lg font-bold text-vasthav-700">
+                  {card.title.charAt(0)}
+                </div>
+
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                  Manage
+                </span>
               </div>
 
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                Manage
-              </span>
+              <p className="text-sm font-medium text-slate-500">
+                {card.title}
+              </p>
+
+              <p className="mt-1 text-2xl font-bold text-slate-950">
+                {card.value}
+              </p>
+
+              <p className="mt-2 text-sm text-slate-500">
+                {card.description}
+              </p>
             </div>
-
-            <p className="text-sm font-medium text-slate-500">
-              {card.title}
-            </p>
-
-            <p className="mt-1 text-2xl font-bold text-slate-950">
-              {card.value}
-            </p>
-
-            <p className="mt-2 text-sm text-slate-500">
-              {card.description}
-            </p>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
 
       <section className="card mt-6 overflow-hidden">
         <div className="border-b border-slate-100 px-6 py-5">
@@ -96,7 +105,7 @@ export function DashboardPage() {
             </p>
 
             <p className="mt-1 text-sm font-medium text-slate-800">
-              {user?.role}
+              {user?.role === 'SURVEYER' ? t('auth.roleHead') : user?.role === 'ADMIN' ? t('auth.roleAdmin') : t('auth.roleUser')}
             </p>
           </div>
         </div>

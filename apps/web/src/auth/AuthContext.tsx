@@ -14,10 +14,9 @@ import {
   getAccessToken,
   getRefreshToken,
   getRememberMe,
-  getStoredUser,
   saveSession,
 } from './auth.storage';
-import type { AuthUser } from './types';
+import { isUserRole, type AuthUser, type UserRole } from './types';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -26,8 +25,9 @@ interface AuthContextValue {
   login: (
     email: string,
     password: string,
+    loginAs: UserRole,
     rememberMe?: boolean,
-  ) => Promise<void>;
+  ) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -40,9 +40,7 @@ export function AuthProvider({
 }: {
   children: ReactNode;
 }) {
-  const [user, setUser] = useState<AuthUser | null>(
-    getStoredUser,
-  );
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -52,43 +50,80 @@ export function AuthProvider({
   }, []);
 
   useEffect(() => {
-    const storedUser = getStoredUser();
+    const onSessionExpired = () => handleLogout();
+    window.addEventListener('vasthav:session-expired', onSessionExpired);
+    return () => window.removeEventListener('vasthav:session-expired', onSessionExpired);
+  }, [handleLogout]);
+
+  useEffect(() => {
     const accessToken = getAccessToken();
     const refreshToken = getRefreshToken();
+    const rememberMe = getRememberMe();
 
-    if (!storedUser || !accessToken) {
+    if (!accessToken && !refreshToken) {
+      clearSession();
       setIsLoading(false);
       return;
     }
 
-    authService
-      .getCurrentUser()
-      .then((currentUser) => {
-        setUser(currentUser);
+    async function restoreSession() {
+      try {
+        let currentUser: AuthUser;
+        let currentAccessToken = accessToken;
+        let currentRefreshToken = refreshToken;
 
-        saveSession(
-          accessToken,
-          refreshToken ?? '',
-          currentUser,
-          getRememberMe(),
-        );
-      })
-      .catch(handleLogout)
-      .finally(() => {
+        if (accessToken) {
+          try {
+            currentUser = await authService.getCurrentUser();
+          } catch (accessError) {
+            if (!refreshToken) throw accessError;
+            const rotated = await authService.refresh(refreshToken);
+            if (!isUserRole(rotated.user?.role)) throw new Error('Invalid account role');
+            currentAccessToken = rotated.accessToken;
+            currentRefreshToken = rotated.refreshToken;
+            saveSession(currentAccessToken, currentRefreshToken, rotated.user, rememberMe);
+            currentUser = await authService.getCurrentUser();
+          }
+        } else if (refreshToken) {
+          const rotated = await authService.refresh(refreshToken);
+          if (!isUserRole(rotated.user?.role)) throw new Error('Invalid account role');
+          currentAccessToken = rotated.accessToken;
+          currentRefreshToken = rotated.refreshToken;
+          saveSession(currentAccessToken, currentRefreshToken, rotated.user, rememberMe);
+          currentUser = await authService.getCurrentUser();
+        } else {
+          throw new Error('No active session');
+        }
+
+        if (!isUserRole(currentUser.role)) throw new Error('Invalid account role');
+        setUser(currentUser);
+        saveSession(currentAccessToken ?? '', currentRefreshToken ?? '', currentUser, rememberMe);
+      } catch {
+        handleLogout();
+      } finally {
         setIsLoading(false);
-      });
+      }
+    }
+
+    void restoreSession();
   }, [handleLogout]);
 
   const login = useCallback(
     async (
       email: string,
       password: string,
+      loginAs: UserRole,
       rememberMe = true,
     ) => {
       const result = await authService.login(
         email.trim(),
         password,
+        loginAs,
       );
+
+      if (!isUserRole(result.user?.role)) {
+        throw new Error('The server returned an invalid account role.');
+      }
 
       saveSession(
         result.accessToken,
@@ -98,6 +133,7 @@ export function AuthProvider({
       );
 
       setUser(result.user);
+      return result.user;
     },
     [],
   );

@@ -22,6 +22,7 @@ describe('Authentication API', () => {
     displayName: 'Admin User',
     role: 'ADMIN' as const,
     isActive: true,
+    emailVerifiedAt: new Date(),
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -125,6 +126,14 @@ describe('Authentication API', () => {
       .post('/auth/login')
       .send({ email: 'admin@example.com', password: 'wrong password' })
       .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'admin@example.com', password: 'correct horse battery staple', loginAs: 'USER' })
+      .expect(401)
+      .expect(({ body }) => {
+        expect(body.message).toBe('The selected login role does not match this account.');
+      });
 
     await request(app.getHttpServer()).get('/auth/me').expect(401);
   });

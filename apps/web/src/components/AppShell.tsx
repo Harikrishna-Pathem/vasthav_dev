@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-
-const navigation = [
-  { label: 'Dashboard', to: '/dashboard', icon: '⌂' },
-  { label: 'Surveys', to: '/surveys', icon: '▤' },
-  { label: 'Questions', to: '/questions', icon: '?' },
-];
+import { dashboardPathByRole } from '../auth/types';
+import { useTranslation } from 'react-i18next';
 
 export function AppShell() {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const role = user?.role;
+  const roleLabel = role === 'SURVEYER' ? t('auth.roleHead') : role === 'ADMIN' ? t('auth.roleAdmin') : t('auth.roleUser');
+  const navigation = role === 'ADMIN' || role === 'SURVEYER'
+    ? [
+        { label: t('dashboard.title'), to: dashboardPathByRole[role], icon: '⌂' },
+        { label: t('surveys.title'), to: '/surveys', icon: '▤' },
+      ]
+    : [{ label: t('dashboard.title'), to: dashboardPathByRole.USER, icon: '⌂' }];
 
   const initials = user?.email?.slice(0, 1).toUpperCase() ?? 'U';
 
@@ -76,7 +81,7 @@ export function AppShell() {
                 {user?.email}
               </p>
               <p className="text-xs font-medium text-slate-500">
-                {user?.role}
+                {roleLabel}
               </p>
             </div>
           </div>
@@ -107,7 +112,7 @@ export function AppShell() {
               <p className="text-sm font-semibold text-slate-800">
                 VASTHAV
               </p>
-              <p className="text-xs text-slate-500">{user?.role}</p>
+              <p className="text-xs text-slate-500">{roleLabel}</p>
             </div>
 
             <div className="grid h-9 w-9 place-items-center rounded-full bg-vasthav-100 text-sm font-bold text-vasthav-800">

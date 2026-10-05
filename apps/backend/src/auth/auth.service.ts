@@ -12,14 +12,17 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService, private readonly config: AppConfigService) {}
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findFirst({ where: { email: dto.email.toLowerCase(), deletedAt: null } });
-    if (!user || !user.isActive || !(await bcrypt.compare(dto.password, user.passwordHash))) throw new UnauthorizedException('Invalid email or password');
+    if (!user || !user.isActive || !user.emailVerifiedAt || !(await bcrypt.compare(dto.password, user.passwordHash))) throw new UnauthorizedException('Invalid email or password');
+    if (dto.loginAs && dto.loginAs !== user.role) {
+      throw new UnauthorizedException('The selected login role does not match this account.');
+    }
     return this.issueTokens({ id: user.id, email: user.email, role: user.role });
   }
   async refresh(refreshToken: string) {
     let payload: RefreshTokenPayload;
     try { payload = await this.jwt.verifyAsync<RefreshTokenPayload>(refreshToken, { secret: this.config.refreshTokenSecret }); }
     catch { throw new UnauthorizedException('Refresh token is invalid or expired'); }
-    const record = await this.prisma.refreshToken.findFirst({ where: { id: payload.sid, tokenHash: this.hash(refreshToken), userId: payload.sub, revokedAt: null, expiresAt: { gt: new Date() }, user: { isActive: true, deletedAt: null } }, include: { user: true } });
+    const record = await this.prisma.refreshToken.findFirst({ where: { id: payload.sid, tokenHash: this.hash(refreshToken), userId: payload.sub, revokedAt: null, expiresAt: { gt: new Date() }, user: { isActive: true, deletedAt: null, emailVerifiedAt: { not: null } } }, include: { user: true } });
     if (!record) throw new UnauthorizedException('Refresh token is invalid or revoked');
     await this.prisma.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
     return this.issueTokens({ id: record.user.id, email: record.user.email, role: record.user.role });

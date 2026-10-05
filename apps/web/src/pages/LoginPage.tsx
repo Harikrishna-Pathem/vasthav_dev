@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -11,23 +12,37 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../auth/AuthContext';
+import { dashboardPathByRole, isUserRole, type UserRole } from '../auth/types';
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isLoading, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const registrationVerified = (location.state as { registrationVerified?: string } | null)?.registrationVerified;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginAs, setLoginAs] = useState<UserRole | ''>('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+  if (isLoading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 px-4">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-vasthav-700" />
+          <p className="text-sm font-medium text-slate-500">Loading VASTHAV...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (isAuthenticated && user && isUserRole(user.role)) {
+    return <Navigate to={dashboardPathByRole[user.role]} replace />;
   }
 
   async function handleSubmit(
@@ -35,24 +50,33 @@ export function LoginPage() {
   ) {
     event.preventDefault();
 
+    if (submittingRef.current) return;
+
     setError('');
+    if (!loginAs) {
+      setError(t('auth.selectRoleError'));
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setError(t('auth.invalidEmail'));
+      return;
+    }
+    if (!password) {
+      setError(t('auth.passwordRequired'));
+      return;
+    }
+
+    submittingRef.current = true;
     setIsSubmitting(true);
 
     try {
-      await login(email, password, rememberMe);
-
-      const from =
-        (location.state as { from?: string } | null)?.from ??
-        '/dashboard';
-
-      navigate(from, { replace: true });
+      const authenticatedUser = await login(email, password, loginAs, rememberMe);
+      navigate(dashboardPathByRole[authenticatedUser.role], { replace: true });
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : t('auth.loginFailed'),
-      );
+      const message = err instanceof Error ? err.message : '';
+      setError(message === 'Request failed' || !message ? t('auth.networkError') : message);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -154,6 +178,28 @@ export function LoginPage() {
                 className="mt-7 space-y-5"
                 noValidate
               >
+                <div>
+                  <label htmlFor="login-as" className="mb-2 block text-sm font-semibold text-slate-800">
+                    {t('auth.loginAs')}
+                  </label>
+                  <select
+                    id="login-as"
+                    value={loginAs}
+                    onChange={(event) => {
+                      setLoginAs(event.target.value as UserRole | '');
+                      setError('');
+                    }}
+                    required
+                    disabled={isSubmitting}
+                    className="form-input h-12 w-full"
+                  >
+                    <option value="">{t('auth.selectLoginRole')}</option>
+                    <option value="USER">{t('auth.roleUser')}</option>
+                    <option value="SURVEYER">{t('auth.roleHead')}</option>
+                    <option value="ADMIN">{t('auth.roleAdmin')}</option>
+                  </select>
+                </div>
+
                 {/* Email */}
                 <div>
                   <label
@@ -210,12 +256,14 @@ export function LoginPage() {
 
                 {/* Password */}
                 <div>
-                  <label
-                    htmlFor="password"
-                    className="mb-2 block text-sm font-semibold text-slate-800"
-                  >
-                    {t('auth.password')}
-                  </label>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label htmlFor="password" className="block text-sm font-semibold text-slate-800">
+                      {t('auth.password')}
+                    </label>
+                    <Link to="/forgot-password" className="text-xs font-semibold text-vasthav-700 hover:text-vasthav-800">
+                      {t('auth.forgotPassword')}
+                    </Link>
+                  </div>
 
                   <div className="relative">
                     <div

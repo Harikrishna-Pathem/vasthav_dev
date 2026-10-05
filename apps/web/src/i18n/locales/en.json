@@ -5,6 +5,16 @@
   "unexpectedError": "Something went wrong.",
   "auth": {
     "login": "Login",
+    "loginAs": "Login as",
+    "selectLoginRole": "Select a role",
+    "roleUser": "User",
+    "roleHead": "Head / Survey Head",
+    "roleAdmin": "Admin",
+    "forgotPassword": "Forgot Password?",
+    "selectRoleError": "Select how you want to log in.",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordRequired": "Enter your password.",
+    "networkError": "Unable to connect. Check your connection and try again.",
     "email": "Email",
     "password": "Password",
     "loggingIn": "Logging in...",
@@ -13,7 +23,13 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "userTitle": "User Dashboard",
+    "headTitle": "Survey Head Dashboard",
+    "adminTitle": "Admin Dashboard",
     "welcome": "Welcome, {{email}}",
     "role": "Role"
+  },
+  "surveys": {
+    "title": "Surveys"
   }
 }

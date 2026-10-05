@@ -27,8 +27,8 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token, { secret: this.config.accessTokenSecret });
       const user = await this.prisma.user.findFirst({ where: { id: payload.sub, deletedAt: null } });
 
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('Account is inactive or no longer available');
+      if (!user || !user.isActive || !user.emailVerifiedAt) {
+        throw new UnauthorizedException('Account is inactive, unverified, or no longer available');
       }
 
       request.user = { id: user.id, email: user.email, role: user.role, preferredLanguage: (payload.preferredLanguage ?? user.preferredLanguage ?? UserLanguage.en) as UserLanguage };

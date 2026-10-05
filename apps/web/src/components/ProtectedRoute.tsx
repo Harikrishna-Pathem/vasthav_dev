@@ -1,8 +1,9 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { dashboardPathByRole, isUserRole, type UserRole } from '../auth/types';
 
-export function ProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+export function ProtectedRoute({ allowedRoles }: { allowedRoles?: UserRole[] }) {
+  const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -26,6 +27,14 @@ export function ProtectedRoute() {
         state={{ from: location.pathname }}
       />
     );
+  }
+
+  if (!user || !isUserRole(user.role)) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to={dashboardPathByRole[user.role]} replace />;
   }
 
   return <Outlet />;
