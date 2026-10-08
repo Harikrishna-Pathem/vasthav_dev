@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -9,6 +9,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
+import { AssignUserConstituencyDto } from './dto/assign-user-constituency.dto.js';
 import { ListUsersQueryDto } from './dto/list-users-query.dto.js';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
@@ -85,5 +86,13 @@ export class UsersController {
   @ApiOkResponse({ description: 'Password reset successful.' })
   resetPassword(@Param('id') id: string, @Body() dto: ResetUserPasswordDto, @CurrentUser() user: AuthenticatedUser) {
     return this.users.resetPassword(id, dto, user.id);
+  }
+
+  @Patch(':id/constituency')
+  @Permissions(Permission.UserManage)
+  @ApiOperation({ summary: 'Assign or remove a user constituency' })
+  @ApiOkResponse({ description: 'User constituency updated.' })
+  assignConstituency(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignUserConstituencyDto) {
+    return this.users.assignConstituency(id, dto.constituencyId);
   }
 }

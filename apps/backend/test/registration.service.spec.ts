@@ -9,6 +9,7 @@ import { EmailService } from '../src/email/email.service.js';
 import { RegistrationService } from '../src/auth/registration.service.js';
 import { RegisterUserDto } from '../src/auth/dto/register-user.dto.js';
 import { ResetPasswordDto } from '../src/auth/dto/reset-password.dto.js';
+import { ConstituenciesService } from '../src/constituencies/constituencies.service.js';
 
 const userId = 'd7d897c4-7ec7-47ce-b515-40191feb2310';
 const constituencyId = '8c7955c1-2c1a-48bc-b4bf-ace1e17d2a45';
@@ -20,6 +21,10 @@ const transactionMock = {
     create: jest.fn(),
     findFirst: jest.fn(),
     updateMany: jest.fn(),
+  },
+  constituency: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
   },
   otp: {
     create: jest.fn(),
@@ -36,9 +41,6 @@ const prismaMock = {
   user: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
-  },
-  constituency: {
-    findUnique: jest.fn(),
   },
   $transaction: jest.fn(
     async (callback: (transaction: typeof transactionMock) => Promise<unknown>) =>
@@ -57,6 +59,7 @@ const service = new RegistrationService(
   configMock as AppConfigService,
   emailMock as unknown as EmailService,
 );
+const constituenciesService = new ConstituenciesService(prismaMock as unknown as PrismaService);
 
 const registrationDto = {
   displayName: 'Asha Reddy',
@@ -127,7 +130,8 @@ describe('RegistrationService', () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.user.findFirst.mockResolvedValue(pendingUser());
     transactionMock.user.findFirst.mockResolvedValue(pendingUser());
-    prismaMock.constituency.findUnique.mockResolvedValue({ id: constituencyId });
+    transactionMock.constituency.findUnique.mockResolvedValue({ id: constituencyId, isActive: true });
+    transactionMock.constituency.update.mockResolvedValue({ id: constituencyId, isActive: false });
     prismaMock.$transaction.mockImplementation(
       async (callback: (transaction: typeof transactionMock) => Promise<unknown>) =>
         callback(transactionMock),
@@ -191,9 +195,92 @@ describe('RegistrationService', () => {
   });
 
   it('rejects a constituency that does not exist', async () => {
-    prismaMock.constituency.findUnique.mockResolvedValue(null);
+    transactionMock.constituency.findUnique.mockResolvedValue(null);
     await expect(service.register(registrationDto)).rejects.toBeInstanceOf(BadRequestException);
     expect(transactionMock.user.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive constituency during public registration', async () => {
+    transactionMock.constituency.findUnique.mockResolvedValue({ id: constituencyId, isActive: false });
+    await expect(service.register(registrationDto)).rejects.toBeInstanceOf(BadRequestException);
+    expect(transactionMock.user.create).not.toHaveBeenCalled();
+  });
+
+  it('waits for an in-flight deactivation and rejects registration after it commits', async () => {
+    let constituencyIsActive = true;
+    let rowLocked = false;
+    const lockWaiters: Array<() => void> = [];
+    let lockRequests = 0;
+    let continueStatusRead!: () => void;
+    let signalStatusLock!: () => void;
+    let signalRegistrationWait!: () => void;
+    let signalStatusRead!: () => void;
+    const statusReadPaused = new Promise<void>((resolve) => { signalStatusRead = resolve; });
+    const statusLockAcquired = new Promise<void>((resolve) => { signalStatusLock = resolve; });
+    const registrationWaiting = new Promise<void>((resolve) => { signalRegistrationWait = resolve; });
+    const resumeStatusRead = new Promise<void>((resolve) => { continueStatusRead = resolve; });
+
+    const acquireRowLock = async () => {
+      if (!rowLocked) {
+        rowLocked = true;
+        return;
+      }
+      await new Promise<void>((resolve) => lockWaiters.push(resolve));
+    };
+    const releaseRowLock = () => {
+      const next = lockWaiters.shift();
+      if (next) next();
+      else rowLocked = false;
+    };
+
+    transactionMock.constituency.findUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+      if (where.isActive === true) {
+        return constituencyIsActive ? { id: constituencyId, isActive: true } : null;
+      }
+      if (constituencyIsActive) {
+        signalStatusRead();
+        await resumeStatusRead;
+      }
+      return { id: constituencyId, isActive: constituencyIsActive, _count: { users: 0 } };
+    });
+    transactionMock.constituency.update.mockImplementation(async ({ data }: { data: { isActive: boolean } }) => {
+      constituencyIsActive = data.isActive;
+      return { id: constituencyId, isActive: constituencyIsActive };
+    });
+    prismaMock.$transaction.mockImplementation(async (callback: (transaction: typeof transactionMock) => Promise<unknown>) => {
+      let acquired = false;
+      const transaction = {
+        ...transactionMock,
+        $queryRaw: jest.fn(async () => {
+          lockRequests += 1;
+          if (lockRequests === 1) signalStatusLock();
+          if (lockRequests === 2) signalRegistrationWait();
+          await acquireRowLock();
+          acquired = true;
+          return [];
+        }),
+      };
+      try {
+        return await callback(transaction);
+      } finally {
+        if (acquired) releaseRowLock();
+      }
+    });
+
+    const deactivation = constituenciesService.updateStatus(constituencyId, { isActive: false });
+    await statusLockAcquired;
+    await statusReadPaused;
+    const registration = service.register(registrationDto);
+    await registrationWaiting;
+    continueStatusRead();
+
+    await expect(deactivation).resolves.toMatchObject({ isActive: false });
+    await expect(registration).rejects.toBeInstanceOf(BadRequestException);
+    expect(transactionMock.user.create).not.toHaveBeenCalled();
+    expect(transactionMock.constituency.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: constituencyId, isActive: true },
+    }));
+    expect(lockRequests).toBe(2);
   });
 
   it('rejects mismatched password confirmation', async () => {

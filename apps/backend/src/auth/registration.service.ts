@@ -51,20 +51,23 @@ export class RegistrationService {
       throw new ConflictException('Email or mobile number is already registered');
     }
 
-    const constituency = await this.prisma.constituency.findUnique({
-      where: { id: dto.constituencyId },
-      select: { id: true },
-    });
-    if (!constituency) {
-      throw new BadRequestException('Select a valid constituency');
-    }
-
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const otp = this.generateOtp();
     let user: { id: string; email: string; displayName: string };
 
     try {
       user = await this.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM constituencies WHERE id = ${dto.constituencyId}::uuid FOR UPDATE
+        `;
+        const constituency = await transaction.constituency.findUnique({
+          where: { id: dto.constituencyId, isActive: true },
+          select: { id: true, isActive: true },
+        });
+        if (!constituency || !constituency.isActive) {
+          throw new BadRequestException('Select a valid constituency');
+        }
+
         const createdUser = await transaction.user.create({
           data: {
             displayName: dto.displayName.trim(),

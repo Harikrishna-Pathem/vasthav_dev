@@ -17,6 +17,7 @@ const userSelect = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
+  constituency: { select: { id: true, name: true, isActive: true } },
 } as const;
 
 type UserRecord = Record<string, unknown>;
@@ -102,6 +103,37 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null }, select: userSelect });
     if (!user) throw new NotFoundException('User not found');
     return this.sanitizeUser(user);
+  }
+
+  async assignConstituency(id: string, constituencyId: string | null) {
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users WHERE id = ${id}::uuid FOR UPDATE
+      `;
+      const user = await transaction.user.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true },
+      });
+      if (!user) throw new NotFoundException('User not found');
+
+      if (constituencyId !== null) {
+        await transaction.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM constituencies WHERE id = ${constituencyId}::uuid FOR UPDATE
+        `;
+        const constituency = await transaction.constituency.findUnique({
+          where: { id: constituencyId },
+          select: { id: true, isActive: true },
+        });
+        if (!constituency) throw new NotFoundException('Constituency not found');
+        if (!constituency.isActive) throw new ConflictException('Cannot assign an inactive constituency');
+      }
+
+      return transaction.user.update({
+        where: { id },
+        data: { constituencyId },
+        select: userSelect,
+      });
+    });
   }
 
   async updateUser(id: string, dto: UpdateUserDto) {

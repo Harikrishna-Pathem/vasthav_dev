@@ -10,12 +10,19 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const role = user?.activeRole;
   const roleLabel = role === 'SURVEYER' ? t('auth.roleHead') : role === 'ADMIN' ? t('auth.roleAdmin') : t('auth.roleUser');
-  const navigation = role === 'ADMIN' || role === 'SURVEYER'
+  const navigation = role === 'ADMIN'
     ? [
-        { label: t('dashboard.title'), to: dashboardPathByRole[role], icon: '⌂' },
+        { label: t('dashboard.title'), to: dashboardPathByRole.ADMIN, icon: '⌂' },
         { label: t('surveys.title'), to: '/surveys', icon: '▤' },
+        { label: 'Users', to: '/admin/users', icon: 'U' },
+        { label: 'Constituencies', to: '/admin/constituencies', icon: 'C' },
       ]
-    : [{ label: t('dashboard.title'), to: dashboardPathByRole.USER, icon: '⌂' }];
+    : role === 'SURVEYER'
+      ? [
+          { label: t('dashboard.title'), to: dashboardPathByRole.SURVEYER, icon: '⌂' },
+          { label: t('surveys.title'), to: '/surveys', icon: '▤' },
+        ]
+      : [{ label: t('dashboard.title'), to: dashboardPathByRole.USER, icon: '⌂' }];
 
   const initials = user?.email?.slice(0, 1).toUpperCase() ?? 'U';
 

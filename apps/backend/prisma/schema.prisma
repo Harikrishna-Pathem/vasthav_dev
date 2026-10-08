@@ -9,11 +9,11 @@ datasource db {
 
 /// Foundation record used to validate database conventions and migration flow.
 model SystemSetting {
-  id        String   @id @default(uuid()) @db.Uuid
-  key       String   @unique @db.VarChar(100)
-  value     String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id        String    @id @default(uuid()) @db.Uuid
+  key       String    @unique @db.VarChar(100)
+  value     String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   @@index([deletedAt])
@@ -67,26 +67,26 @@ enum QuestionOptionStatus {
 }
 
 model User {
-  id                String         @id @default(uuid()) @db.Uuid
-  email             String         @unique @db.VarChar(320)
-  passwordHash      String         @map("password_hash") @db.VarChar(255)
-  displayName       String         @map("display_name") @db.VarChar(150)
-  mobileNumber      String?        @unique @map("mobile_number") @db.VarChar(20)
-  emailVerifiedAt   DateTime?      @map("email_verified_at") @db.Timestamptz(6)
-  constituencyId    String?        @map("constituency_id") @db.Uuid
-  role              UserRole       @default(USER)
-  preferredLanguage UserLanguage   @default(en) @map("preferred_language")
-  isActive          Boolean        @default(true) @map("is_active")
-  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz(6)
-  constituency      Constituency?  @relation(fields: [constituencyId], references: [id], onDelete: SetNull)
+  id                String           @id @default(uuid()) @db.Uuid
+  email             String           @unique @db.VarChar(320)
+  passwordHash      String           @map("password_hash") @db.VarChar(255)
+  displayName       String           @map("display_name") @db.VarChar(150)
+  mobileNumber      String?          @unique @map("mobile_number") @db.VarChar(20)
+  emailVerifiedAt   DateTime?        @map("email_verified_at") @db.Timestamptz(6)
+  constituencyId    String?          @map("constituency_id") @db.Uuid
+  role              UserRole         @default(USER)
+  preferredLanguage UserLanguage     @default(en) @map("preferred_language")
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  constituency      Constituency?    @relation(fields: [constituencyId], references: [id], onDelete: SetNull)
   refreshTokens     RefreshToken[]
   otps              Otp[]
-  surveysCreated    Survey[]       @relation("SurveyCreatedBy")
-  surveysUpdated    Survey[]       @relation("SurveyUpdatedBy")
-  questionsCreated  Question[]     @relation("QuestionCreatedBy")
-  questionsUpdated  Question[]     @relation("QuestionUpdatedBy")
+  surveysCreated    Survey[]         @relation("SurveyCreatedBy")
+  surveysUpdated    Survey[]         @relation("SurveyUpdatedBy")
+  questionsCreated  Question[]       @relation("QuestionCreatedBy")
+  questionsUpdated  Question[]       @relation("QuestionUpdatedBy")
   surveyResponses   SurveyResponse[]
 
   @@index([role])
@@ -100,10 +100,12 @@ model User {
 model Constituency {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   users     User[]
 
+  @@index([isActive])
   @@map("constituencies")
 }
 
@@ -180,26 +182,26 @@ model SurveyTranslation {
 }
 
 model Question {
-  id          String        @id @default(uuid()) @db.Uuid
-  code        String        @unique @db.VarChar(120)
-  text        String        @db.Text
-  description String?       @db.Text
-  questionType QuestionType  @map("question_type")
-  required    Boolean       @default(false)
-  status      QuestionStatus @default(DRAFT)
-  version     Int           @default(1)
-  createdBy   String        @map("created_by") @db.Uuid
-  updatedBy   String        @map("updated_by") @db.Uuid
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  id           String         @id @default(uuid()) @db.Uuid
+  code         String         @unique @db.VarChar(120)
+  text         String         @db.Text
+  description  String?        @db.Text
+  questionType QuestionType   @map("question_type")
+  required     Boolean        @default(false)
+  status       QuestionStatus @default(DRAFT)
+  version      Int            @default(1)
+  createdBy    String         @map("created_by") @db.Uuid
+  updatedBy    String         @map("updated_by") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?      @map("deleted_at") @db.Timestamptz(6)
 
   createdByUser User                  @relation("QuestionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   updatedByUser User                  @relation("QuestionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
   options       QuestionOption[]
   surveyLinks   SurveyQuestion[]
   translations  QuestionTranslation[]
-  answers       SurveyAnswer[]  
+  answers       SurveyAnswer[]
 
   @@index([questionType])
   @@index([status])
@@ -235,7 +237,7 @@ model QuestionOption {
   updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?            @map("deleted_at") @db.Timestamptz(6)
 
-  question     Question                   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question     Question                    @relation(fields: [questionId], references: [id], onDelete: Cascade)
   translations QuestionOptionTranslation[]
 
   @@unique([questionId, code])
@@ -261,14 +263,14 @@ model QuestionOptionTranslation {
 }
 
 model SurveyQuestion {
-  id          String    @id @default(uuid()) @db.Uuid
-  surveyId    String    @map("survey_id") @db.Uuid
-  questionId  String    @map("question_id") @db.Uuid
-  displayOrder Int      @map("display_order")
-  isRequired  Boolean   @default(false) @map("is_required")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id           String    @id @default(uuid()) @db.Uuid
+  surveyId     String    @map("survey_id") @db.Uuid
+  questionId   String    @map("question_id") @db.Uuid
+  displayOrder Int       @map("display_order")
+  isRequired   Boolean   @default(false) @map("is_required")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   survey   Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   question Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
@@ -282,17 +284,17 @@ model SurveyQuestion {
 }
 
 model SurveyResponse {
-  id          String    @id @default(uuid()) @db.Uuid
-  surveyId    String    @map("survey_id") @db.Uuid
-  respondentId String?  @map("respondent_id") @db.Uuid
-  status      String    @default("SUBMITTED") @db.VarChar(30)
-  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String    @id @default(uuid()) @db.Uuid
+  surveyId     String    @map("survey_id") @db.Uuid
+  respondentId String?   @map("respondent_id") @db.Uuid
+  status       String    @default("SUBMITTED") @db.VarChar(30)
+  submittedAt  DateTime? @map("submitted_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  survey      Survey    @relation(fields: [surveyId], references: [id], onDelete: Restrict)
-  respondent  User?     @relation(fields: [respondentId], references: [id], onDelete: SetNull)
-  answers     SurveyAnswer[]
+  survey     Survey         @relation(fields: [surveyId], references: [id], onDelete: Restrict)
+  respondent User?          @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+  answers    SurveyAnswer[]
 
   @@index([surveyId])
   @@index([respondentId])

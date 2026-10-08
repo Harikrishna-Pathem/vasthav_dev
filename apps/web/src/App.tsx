@@ -20,6 +20,8 @@ import { RegistrationPage } from './pages/auth/RegistrationPage';
 import { RegistrationOtpPage } from './pages/auth/RegistrationOtpPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { RoleSelectionPage } from './pages/RoleSelectionPage';
+import { AdminConstituenciesPage } from './pages/admin/AdminConstituenciesPage';
+import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 
 export function App() {
   return (
@@ -58,6 +60,10 @@ export function App() {
                 <Route path="/surveys/:id/results" element={<SurveyResultsPage />} />
 
                 <Route path="/responses/:id" element={<ResponseDetailsPage />} />
+              </Route>
+              <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+                <Route path="/admin/users" element={<AdminUsersPage />} />
+                <Route path="/admin/constituencies" element={<AdminConstituenciesPage />} />
               </Route>
             </Route>
           </Route>

@@ -26,6 +26,7 @@ function renderRoleRoute(user: AuthUser | null, initialPath = '/dashboard/admin'
         <Route element={<ProtectedRoute />}>
           <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
             <Route path="/dashboard/admin" element={<p>Admin dashboard</p>} />
+            <Route path="/admin/users" element={<p>Admin users</p>} />
           </Route>
           <Route path="/dashboard/user" element={<p>User dashboard</p>} />
         </Route>
@@ -47,5 +48,11 @@ describe('ProtectedRoute', () => {
   it('redirects unauthenticated visits to login', async () => {
     renderRoleRoute(null);
     expect(await screen.findByText('Login page')).toBeInTheDocument();
+  });
+
+  it('blocks an ADMIN account using the USER active role from admin management routes', async () => {
+    renderRoleRoute({ id: 'admin-id', email: 'admin@example.com', role: 'ADMIN', actualRole: 'ADMIN', activeRole: 'USER' }, '/admin/users');
+    expect(await screen.findByText('User dashboard')).toBeInTheDocument();
+    expect(screen.queryByText('Admin users')).not.toBeInTheDocument();
   });
 });
