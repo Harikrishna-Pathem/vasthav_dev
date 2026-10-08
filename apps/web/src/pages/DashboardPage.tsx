@@ -22,12 +22,12 @@ const cards = [
 export function DashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const dashboardTitle = user?.role === 'ADMIN'
+  const dashboardTitle = user?.activeRole === 'ADMIN'
     ? t('dashboard.adminTitle')
-    : user?.role === 'SURVEYER'
+    : user?.activeRole === 'SURVEYER'
       ? t('dashboard.headTitle')
       : t('dashboard.userTitle');
-  const canManageSurveys = user?.role === 'ADMIN' || user?.role === 'SURVEYER';
+  const canManageSurveys = user?.activeRole === 'ADMIN' || user?.activeRole === 'SURVEYER';
 
   return (
     <div className="page-container py-8 sm:py-10">
@@ -105,7 +105,7 @@ export function DashboardPage() {
             </p>
 
             <p className="mt-1 text-sm font-medium text-slate-800">
-              {user?.role === 'SURVEYER' ? t('auth.roleHead') : user?.role === 'ADMIN' ? t('auth.roleAdmin') : t('auth.roleUser')}
+              {user?.activeRole === 'SURVEYER' ? t('auth.roleHead') : user?.activeRole === 'ADMIN' ? t('auth.roleAdmin') : t('auth.roleUser')}
             </p>
           </div>
         </div>

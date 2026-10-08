@@ -4,12 +4,10 @@ import type { AuthUser, LoginResponse, UserRole } from './types';
 export async function login(
   email: string,
   password: string,
-  loginAs?: UserRole,
 ): Promise<LoginResponse> {
   const response = await apiClient.post<LoginResponse>('/auth/login', {
     email,
     password,
-    ...(loginAs ? { loginAs } : {}),
   });
 
   return response.data;
@@ -25,6 +23,11 @@ export async function logout(refreshToken: string): Promise<void> {
   await apiClient.post('/auth/logout', {
     refreshToken,
   });
+}
+
+export async function activateRole(activeRole: UserRole): Promise<LoginResponse> {
+  const response = await apiClient.post<LoginResponse>('/auth/active-role', { activeRole });
+  return response.data;
 }
 
 export async function refresh(refreshToken: string): Promise<LoginResponse> {

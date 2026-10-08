@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swa
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ActivateRoleDto } from './dto/activate-role.dto.js';
 import { RegisterUserDto } from './dto/register-user.dto.js';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
@@ -95,5 +96,22 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOkResponse({ description: 'Current authenticated user.' })
-  me(@CurrentUser() user: AuthenticatedUser) { return { id: user.id, email: user.email, role: user.role }; }
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.actualRole,
+      actualRole: user.actualRole,
+      activeRole: user.activeRole,
+    };
+  }
+
+  @Post('active-role')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Activate an allowed role for this session' })
+  activateRole(@Body() dto: ActivateRoleDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.auth.activateRole(user, dto.activeRole);
+  }
 }

@@ -11,7 +11,7 @@ export class RolesGuard implements CanActivate {
     const allowed = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [context.getHandler(), context.getClass()]);
     if (!allowed) return true;
     const user = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
-    if (!user || !allowed.includes(user.role)) throw new ForbiddenException('Insufficient role');
+    if (!user?.activeRole || !allowed.includes(user.activeRole)) throw new ForbiddenException('Insufficient role');
     return true;
   }
 }

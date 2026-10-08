@@ -10,16 +10,21 @@ import '../i18n/i18n';
 vi.mock('../auth/AuthContext', () => ({ useAuth: vi.fn() }));
 
 const useAuthMock = vi.mocked(useAuth);
-type LoginHandler = (
-  email: string,
-  password: string,
-  loginAs: UserRole,
-  rememberMe?: boolean,
-) => Promise<AuthUser>;
+type LoginHandler = (email: string, password: string, rememberMe?: boolean) => Promise<AuthUser>;
 
 function LocationDisplay() {
   const location = useLocation();
   return <p data-testid="current-path">{location.pathname}</p>;
+}
+
+function account(actualRole: UserRole, activeRole: UserRole | null): AuthUser {
+  return {
+    id: 'user-id',
+    email: 'person@example.com',
+    role: actualRole,
+    actualRole,
+    activeRole,
+  };
 }
 
 function renderLogin(login: LoginHandler) {
@@ -28,6 +33,7 @@ function renderLogin(login: LoginHandler) {
     isAuthenticated: false,
     isLoading: false,
     login,
+    activateRole: vi.fn(),
     logout: vi.fn(),
   });
 
@@ -36,14 +42,17 @@ function renderLogin(login: LoginHandler) {
       <LocationDisplay />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/select-role" element={<p>Role selection</p>} />
+        <Route path="/dashboard/user" element={<p>User dashboard</p>} />
+        <Route path="/dashboard/head" element={<p>Survey Head dashboard</p>} />
+        <Route path="/dashboard/admin" element={<p>Admin dashboard</p>} />
         <Route path="*" element={<p>Unexpected route</p>} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
-function fillLoginForm(role: UserRole) {
-  fireEvent.change(screen.getByLabelText('Login as'), { target: { value: role } });
+function fillLoginForm() {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'person@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery staple' } });
   fireEvent.click(screen.getByRole('button', { name: 'Login' }));
@@ -52,50 +61,45 @@ function fillLoginForm(role: UserRole) {
 describe('LoginPage', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each([
-    ['USER', '/dashboard/user'],
-    ['SURVEYER', '/dashboard/head'],
-    ['ADMIN', '/dashboard/admin'],
-  ] as const)('submits login mode %s and redirects from the returned role', async (loginAs, path) => {
-    const actualUser: AuthUser = {
-      id: 'user-id',
-      email: 'person@example.com',
-      role: loginAs,
-    };
-    const login = vi.fn<LoginHandler>().mockResolvedValue(actualUser);
+  it('removes the role dropdown and sends only email and password', async () => {
+    const login = vi.fn<LoginHandler>().mockResolvedValue(account('USER', 'USER'));
     renderLogin(login);
 
-    fillLoginForm(loginAs);
+    expect(screen.queryByLabelText('Login as')).not.toBeInTheDocument();
+    fillLoginForm();
+
+    expect(await screen.findByText('User dashboard')).toBeInTheDocument();
+    expect(login).toHaveBeenCalledWith('person@example.com', 'correct horse battery staple', true);
+  });
+
+  it.each([
+    ['SURVEYER', '/select-role'],
+    ['ADMIN', '/select-role'],
+  ] as const)('routes %s accounts to role selection after authentication', async (actualRole, path) => {
+    const login = vi.fn<LoginHandler>().mockResolvedValue(account(actualRole, null));
+    renderLogin(login);
+    fillLoginForm();
 
     await waitFor(() => expect(screen.getByTestId('current-path')).toHaveTextContent(path));
-    expect(login).toHaveBeenCalledWith('person@example.com', 'correct horse battery staple', loginAs, true);
+    expect(await screen.findByText('Role selection')).toBeInTheDocument();
   });
 
-  it('uses the authenticated role returned by the API for the redirect', async () => {
+  it('handles unexpected role data safely', async () => {
     const login = vi.fn<LoginHandler>().mockResolvedValue({
-      id: 'admin-id',
-      email: 'person@example.com',
-      role: 'ADMIN',
-    });
+      ...account('ADMIN', null),
+      actualRole: 'SUPERUSER',
+    } as unknown as AuthUser);
     renderLogin(login);
-    fillLoginForm('USER');
+    fillLoginForm();
 
-    await waitFor(() => expect(screen.getByTestId('current-path')).toHaveTextContent('/dashboard/admin'));
-  });
-
-  it('shows a safe role mismatch message from the authentication API', async () => {
-    const login = vi.fn<LoginHandler>().mockRejectedValue(new Error('The selected login role does not match this account.'));
-    renderLogin(login);
-    fillLoginForm('ADMIN');
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('The selected login role does not match this account.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('The server returned an invalid account role.');
     expect(screen.getByTestId('current-path')).toHaveTextContent('/login');
   });
 
-  it('shows a generic authentication error for invalid credentials', async () => {
+  it('shows a safe authentication error for invalid credentials', async () => {
     const login = vi.fn<LoginHandler>().mockRejectedValue(new Error('Invalid email or password'));
     renderLogin(login);
-    fillLoginForm('USER');
+    fillLoginForm();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password');
     expect(screen.getByTestId('current-path')).toHaveTextContent('/login');
@@ -105,15 +109,15 @@ describe('LoginPage', () => {
     let resolveLogin!: (user: AuthUser) => void;
     const login = vi.fn<LoginHandler>(() => new Promise<AuthUser>((resolve) => { resolveLogin = resolve; }));
     const { container } = renderLogin(login);
-    fillLoginForm('USER');
+    fillLoginForm();
 
-    const submit = container.querySelector('form');
-    expect(submit).not.toBeNull();
+    const form = container.querySelector('form');
+    expect(form).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Logging in...' })).toBeDisabled();
-    fireEvent.submit(submit!);
+    fireEvent.submit(form!);
     expect(login).toHaveBeenCalledTimes(1);
 
-    resolveLogin({ id: 'user-id', email: 'person@example.com', role: 'USER' });
-    await waitFor(() => expect(screen.getByTestId('current-path')).toHaveTextContent('/dashboard/user'));
+    resolveLogin(account('USER', 'USER'));
+    expect(await screen.findByText('User dashboard')).toBeInTheDocument();
   });
 });

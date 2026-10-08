@@ -8,7 +8,7 @@ export function AppShell() {
   const { user, logout } = useAuth();
   const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const role = user?.role;
+  const role = user?.activeRole;
   const roleLabel = role === 'SURVEYER' ? t('auth.roleHead') : role === 'ADMIN' ? t('auth.roleAdmin') : t('auth.roleUser');
   const navigation = role === 'ADMIN' || role === 'SURVEYER'
     ? [

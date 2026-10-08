@@ -1,13 +1,14 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { dashboardPathByRole, isUserRole } from '../auth/types';
+import { dashboardPathByRole, isAuthUser } from '../auth/types';
 
 export function RoleDashboardRedirect() {
   const { user } = useAuth();
 
-  if (!user || !isUserRole(user.role)) {
+  if (!user || !isAuthUser(user)) {
     return <Navigate to="/login" replace />;
   }
 
-  return <Navigate to={dashboardPathByRole[user.role]} replace />;
+  if (!user.activeRole) return <Navigate to="/select-role" replace />;
+  return <Navigate to={dashboardPathByRole[user.activeRole]} replace />;
 }

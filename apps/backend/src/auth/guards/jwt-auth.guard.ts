@@ -6,6 +6,7 @@ import { AppConfigService } from '../../config/app-config.service.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 import { AccessTokenPayload, AuthenticatedUser } from '../auth.types.js';
+import { getInitialActiveRole, isActiveRoleAllowed } from '../role-hierarchy.js';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -45,7 +46,21 @@ export class JwtAuthGuard implements CanActivate {
       });
       if (!session) throw new UnauthorizedException('Access token session is invalid or revoked');
 
-      request.user = { id: user.id, email: user.email, role: user.role, preferredLanguage: (payload.preferredLanguage ?? user.preferredLanguage ?? UserLanguage.en) as UserLanguage };
+      const activeRole = payload.activeRole === undefined
+        ? getInitialActiveRole(user.role)
+        : payload.activeRole;
+      if (activeRole === null ? user.role === 'USER' : !isActiveRoleAllowed(user.role, activeRole)) {
+        throw new UnauthorizedException('Access token role is invalid');
+      }
+
+      request.user = {
+        id: user.id,
+        email: user.email,
+        actualRole: user.role,
+        activeRole,
+        sessionId: payload.sid,
+        preferredLanguage: (payload.preferredLanguage ?? user.preferredLanguage ?? UserLanguage.en) as UserLanguage,
+      };
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;

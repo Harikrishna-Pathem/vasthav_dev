@@ -45,7 +45,7 @@ export class SurveysService {
   ) {}
 
   private assertCanManageSurvey(user: AuthenticatedUser, survey: { createdBy: string }) {
-    if (user.role === UserRole.ADMIN) return;
+    if (user.activeRole === UserRole.ADMIN) return;
     if (survey.createdBy !== user.id) {
       throw new ForbiddenException('You can only manage your own surveys');
     }
@@ -58,7 +58,7 @@ export class SurveysService {
   }
 
   async create(dto: CreateSurveyDto, user: AuthenticatedUser) {
-    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SURVEYER) {
+    if (user.activeRole !== UserRole.ADMIN && user.activeRole !== UserRole.SURVEYER) {
       throw new ForbiddenException('Survey management requires admin or surveyer access');
     }
     const code = dto.code?.trim() ?? this.defaultCode(dto.name);
@@ -248,8 +248,8 @@ export class SurveysService {
     user: AuthenticatedUser,
     survey: { createdBy: string },
   ) {
-    if (user.role === UserRole.ADMIN) return;
-    if (user.role === UserRole.SURVEYER && survey.createdBy === user.id) return;
+    if (user.activeRole === UserRole.ADMIN) return;
+    if (user.activeRole === UserRole.SURVEYER && survey.createdBy === user.id) return;
     throw new ForbiddenException('You do not have permission to view these survey results');
   }
 

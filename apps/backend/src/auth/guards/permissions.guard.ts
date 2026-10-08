@@ -36,7 +36,7 @@ export class PermissionsGuard implements CanActivate {
     const user = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
     if (!user) throw new ForbiddenException('Authentication required to evaluate permissions');
 
-    const allowed = rolePermissions[user.role] ?? [];
+    const allowed = user.activeRole ? rolePermissions[user.activeRole] ?? [] : [];
     if (!required.every((permission) => allowed.includes(permission))) {
       throw new ForbiddenException('Missing required permission');
     }

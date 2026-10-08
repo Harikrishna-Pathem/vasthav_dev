@@ -26,6 +26,10 @@ export class ResponsesService {
     dto: SubmitResponseDto,
     user: AuthenticatedUser,
   ) {
+    if (user.activeRole !== UserRole.USER) {
+      throw new ForbiddenException('Activate the User role to submit survey responses');
+    }
+
     const survey = await this.prisma.survey.findFirst({
       where: {
         id: dto.surveyId,
@@ -238,11 +242,11 @@ export class ResponsesService {
       createdBy: string;
     },
   ) {
-    if (user.role === UserRole.ADMIN) {
+    if (user.activeRole === UserRole.ADMIN) {
       return;
     }
 
-    if (user.role === UserRole.SURVEYER) {
+    if (user.activeRole === UserRole.SURVEYER) {
       if (survey.createdBy === user.id) {
         return;
       }

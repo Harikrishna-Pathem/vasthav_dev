@@ -176,9 +176,9 @@ describe('Phase 4 survey and question management', () => {
     await app.init();
 
     const jwtService = app.get(JwtService);
-    adminToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role, sid: 'admin-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
-    surveyerToken = jwtService.sign({ sub: surveyerUser.id, email: surveyerUser.email, role: surveyerUser.role, sid: 'surveyer-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
-    userToken = jwtService.sign({ sub: plainUser.id, email: plainUser.email, role: plainUser.role, sid: 'user-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    adminToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role, activeRole: UserRole.ADMIN, sid: 'admin-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    surveyerToken = jwtService.sign({ sub: surveyerUser.id, email: surveyerUser.email, role: surveyerUser.role, activeRole: UserRole.SURVEYER, sid: 'surveyer-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    userToken = jwtService.sign({ sub: plainUser.id, email: plainUser.email, role: plainUser.role, activeRole: UserRole.USER, sid: 'user-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
   });
 
   afterAll(async () => {

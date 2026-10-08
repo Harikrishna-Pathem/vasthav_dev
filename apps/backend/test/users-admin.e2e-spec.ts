@@ -13,6 +13,7 @@ process.env.JWT_REFRESH_SECRET = 'abcdefghijklmnopqrstuvwxzy123456';
 describe('User administration API', () => {
   let app: INestApplication;
   let adminToken: string;
+  let adminAsUserToken: string;
   let userToken: string;
 
   const adminUser = {
@@ -104,8 +105,9 @@ describe('User administration API', () => {
     await app.init();
 
     const jwtService = app.get(JwtService);
-    adminToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role, sid: 'admin-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
-    userToken = jwtService.sign({ sub: plainUser.id, email: plainUser.email, role: plainUser.role, sid: 'user-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    adminToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role, activeRole: UserRole.ADMIN, sid: 'admin-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    adminAsUserToken = jwtService.sign({ sub: adminUser.id, email: adminUser.email, role: adminUser.role, activeRole: UserRole.USER, sid: 'admin-user-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
+    userToken = jwtService.sign({ sub: plainUser.id, email: plainUser.email, role: plainUser.role, activeRole: UserRole.USER, sid: 'user-session' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' });
   });
 
   afterAll(async () => {
@@ -206,6 +208,7 @@ describe('User administration API', () => {
 
     await request(app.getHttpServer()).get('/api/v1/users').expect(401);
     await request(app.getHttpServer()).get('/api/v1/users').set('Authorization', `Bearer ${userToken}`).expect(403);
+    await request(app.getHttpServer()).get('/api/v1/users').set('Authorization', `Bearer ${adminAsUserToken}`).expect(403);
     await request(app.getHttpServer()).get('/api/v1/users').set('Authorization', `Bearer ${userToken}`).expect(({ body }) => {
       expect(body).toMatchObject({ statusCode: 403, message: 'Insufficient role' });
     });

@@ -34,7 +34,7 @@ export class QuestionsService {
   ) {}
 
   private assertCanManageQuestion(user: AuthenticatedUser, question: { createdBy: string }) {
-    if (user.role === UserRole.ADMIN) return;
+    if (user.activeRole === UserRole.ADMIN) return;
     if (question.createdBy !== user.id) throw new ForbiddenException('You can only manage your own questions');
   }
 
@@ -68,7 +68,7 @@ export class QuestionsService {
   }
 
   async create(dto: CreateQuestionDto, user: AuthenticatedUser) {
-    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SURVEYER) {
+    if (user.activeRole !== UserRole.ADMIN && user.activeRole !== UserRole.SURVEYER) {
       throw new ForbiddenException('Question management requires admin or surveyer access');
     }
 

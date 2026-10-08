@@ -16,7 +16,7 @@ import {
   getRememberMe,
   saveSession,
 } from './auth.storage';
-import { isUserRole, type AuthUser, type UserRole } from './types';
+import { isAuthUser, type AuthUser, type UserRole } from './types';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -25,9 +25,9 @@ interface AuthContextValue {
   login: (
     email: string,
     password: string,
-    loginAs: UserRole,
     rememberMe?: boolean,
   ) => Promise<AuthUser>;
+  activateRole: (activeRole: UserRole) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -78,7 +78,7 @@ export function AuthProvider({
           } catch (accessError) {
             if (!refreshToken) throw accessError;
             const rotated = await authService.refresh(refreshToken);
-            if (!isUserRole(rotated.user?.role)) throw new Error('Invalid account role');
+            if (!isAuthUser(rotated.user)) throw new Error('Invalid account role');
             currentAccessToken = rotated.accessToken;
             currentRefreshToken = rotated.refreshToken;
             saveSession(currentAccessToken, currentRefreshToken, rotated.user, rememberMe);
@@ -86,7 +86,7 @@ export function AuthProvider({
           }
         } else if (refreshToken) {
           const rotated = await authService.refresh(refreshToken);
-          if (!isUserRole(rotated.user?.role)) throw new Error('Invalid account role');
+          if (!isAuthUser(rotated.user)) throw new Error('Invalid account role');
           currentAccessToken = rotated.accessToken;
           currentRefreshToken = rotated.refreshToken;
           saveSession(currentAccessToken, currentRefreshToken, rotated.user, rememberMe);
@@ -95,7 +95,7 @@ export function AuthProvider({
           throw new Error('No active session');
         }
 
-        if (!isUserRole(currentUser.role)) throw new Error('Invalid account role');
+        if (!isAuthUser(currentUser)) throw new Error('Invalid account role');
         setUser(currentUser);
         // The API response interceptor may have rotated tokens while fetching /auth/me.
         saveSession(
@@ -118,16 +118,14 @@ export function AuthProvider({
     async (
       email: string,
       password: string,
-      loginAs: UserRole,
       rememberMe = true,
     ) => {
       const result = await authService.login(
         email.trim(),
         password,
-        loginAs,
       );
 
-      if (!isUserRole(result.user?.role)) {
+      if (!isAuthUser(result.user)) {
         throw new Error('The server returned an invalid account role.');
       }
 
@@ -143,6 +141,16 @@ export function AuthProvider({
     },
     [],
   );
+
+  const activateRole = useCallback(async (activeRole: UserRole) => {
+    const result = await authService.activateRole(activeRole);
+    if (!isAuthUser(result.user) || result.user.activeRole !== activeRole) {
+      throw new Error('The server returned an invalid active role.');
+    }
+    saveSession(result.accessToken, result.refreshToken, result.user, getRememberMe());
+    setUser(result.user);
+    return result.user;
+  }, []);
 
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
@@ -162,9 +170,10 @@ export function AuthProvider({
       isAuthenticated: user !== null,
       isLoading,
       login,
+      activateRole,
       logout,
     }),
-    [user, isLoading, login, logout],
+    [user, isLoading, login, activateRole, logout],
   );
 
   return (

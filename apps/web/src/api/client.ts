@@ -7,7 +7,7 @@ import {
   getRememberMe,
   saveSession,
 } from '../auth/auth.storage';
-import { isUserRole, type LoginResponse } from '../auth/types';
+import { isAuthUser, type LoginResponse } from '../auth/types';
 
 type RetryableRequest = InternalAxiosRequestConfig & { _vasthavRetried?: boolean };
 
@@ -55,7 +55,7 @@ apiClient.interceptors.response.use(
           refreshRequest ??= apiClient
             .post<LoginResponse>('/auth/refresh', { refreshToken })
             .then(({ data }) => {
-              if (!data.accessToken || !data.refreshToken || !isUserRole(data.user?.role)) {
+              if (!data.accessToken || !data.refreshToken || !isAuthUser(data.user)) {
                 throw new Error('The session could not be refreshed.');
               }
               saveSession(data.accessToken, data.refreshToken, data.user, getRememberMe());

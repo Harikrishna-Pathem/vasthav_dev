@@ -16,6 +16,7 @@ function renderRoleRoute(user: AuthUser | null, initialPath = '/dashboard/admin'
     isAuthenticated: user !== null,
     isLoading: false,
     login: vi.fn(),
+    activateRole: vi.fn(),
     logout: vi.fn(),
   });
 
@@ -38,7 +39,7 @@ describe('ProtectedRoute', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('redirects users away from routes reserved for another role', async () => {
-    renderRoleRoute({ id: 'user-id', email: 'user@example.com', role: 'USER' });
+    renderRoleRoute({ id: 'user-id', email: 'user@example.com', role: 'USER', actualRole: 'USER', activeRole: 'USER' });
     expect(await screen.findByText('User dashboard')).toBeInTheDocument();
     expect(screen.queryByText('Admin dashboard')).not.toBeInTheDocument();
   });

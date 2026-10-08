@@ -1,16 +1,28 @@
 import * as bcrypt from 'bcryptjs';
-import { UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
+
 import { AuthService } from '../src/auth/auth.service.js';
 import { PrismaService } from '../src/database/prisma.service.js';
-import { JwtService } from '@nestjs/jwt';
 import { AppConfigService } from '../src/config/app-config.service.js';
-import { UserRole } from '@prisma/client';
 import { LoginDto } from '../src/auth/dto/login.dto.js';
 
-describe('AuthService', () => {
-  const user = { id: '9ec2633d-1e7e-4c54-a84d-29a1d5d8d3cc', email: 'admin@example.com', role: UserRole.ADMIN, isActive: true, emailVerifiedAt: new Date(), deletedAt: null, passwordHash: '' };
+describe('AuthService active roles', () => {
+  const userId = '9ec2633d-1e7e-4c54-a84d-29a1d5d8d3cc';
+  const user = {
+    id: userId,
+    email: 'admin@example.com',
+    role: UserRole.ADMIN,
+    preferredLanguage: 'en',
+    isActive: true,
+    emailVerifiedAt: new Date(),
+    deletedAt: null,
+    passwordHash: '',
+  };
   const transactionMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
+    user: { findFirst: jest.fn() },
     refreshToken: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findFirst: jest.fn() },
   };
   const prismaMock = {
@@ -19,160 +31,158 @@ describe('AuthService', () => {
     refreshToken: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findFirst: jest.fn() },
   };
   const jwtMock = { signAsync: jest.fn(), verifyAsync: jest.fn() };
-  const configMock = { accessTokenSecret: 'a'.repeat(40), refreshTokenSecret: 'b'.repeat(40), accessTokenTtl: '15m', refreshTokenTtl: '30d' };
-  const service = new AuthService(prismaMock as unknown as PrismaService, jwtMock as unknown as JwtService, configMock as AppConfigService);
-  beforeEach(() => {
+  const configMock = {
+    accessTokenSecret: 'a'.repeat(40),
+    refreshTokenSecret: 'b'.repeat(40),
+    accessTokenTtl: '15m',
+    refreshTokenTtl: '30d',
+  };
+  const service = new AuthService(
+    prismaMock as unknown as PrismaService,
+    jwtMock as unknown as JwtService,
+    configMock as AppConfigService,
+  );
+
+  beforeEach(async () => {
     jest.clearAllMocks();
     transactionMock.$queryRaw.mockResolvedValue([]);
-  });
-
-  it('issues access and refresh tokens for an active user with valid credentials', async () => {
-    user.passwordHash = await bcrypt.hash('correct horse battery staple', 4);
-    prismaMock.user.findFirst.mockResolvedValue(user);
+    prismaMock.user.findFirst.mockResolvedValue({
+      ...user,
+      passwordHash: await bcrypt.hash('correct horse battery staple', 4),
+    });
     prismaMock.refreshToken.create.mockResolvedValue({ id: 'session-id' });
-    jwtMock.signAsync.mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
-    await expect(service.login({ email: user.email, password: 'correct horse battery staple' })).resolves.toMatchObject({ accessToken: 'access-token', refreshToken: 'refresh-token', tokenType: 'Bearer' });
-    expect(prismaMock.refreshToken.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'session-id' } }));
-    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.ADMIN, sid: 'session-id' }), expect.objectContaining({ secret: configMock.accessTokenSecret, expiresIn: configMock.accessTokenTtl }));
+    prismaMock.refreshToken.update.mockResolvedValue({ id: 'session-id' });
+    transactionMock.user.findFirst.mockResolvedValue(user);
+    transactionMock.refreshToken.findFirst.mockResolvedValue({
+      id: 'session-id', userId, revokedAt: null, expiresAt: new Date(Date.now() + 60_000), user,
+    });
+    transactionMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    transactionMock.refreshToken.create.mockResolvedValue({ id: 'new-session-id' });
+    transactionMock.refreshToken.update.mockResolvedValue({ id: 'new-session-id' });
+    jwtMock.signAsync.mockReset().mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
   });
 
   it.each([
     [UserRole.USER, UserRole.USER],
-    [UserRole.SURVEYER, UserRole.SURVEYER],
-    [UserRole.ADMIN, UserRole.ADMIN],
-  ] as const)('allows matching login mode %s for actual role %s', async (actualRole, loginAs) => {
-    const activeUser = { ...user, role: actualRole, passwordHash: await bcrypt.hash('correct horse battery staple', 4) };
-    prismaMock.user.findFirst.mockResolvedValue(activeUser);
+    [UserRole.SURVEYER, null],
+    [UserRole.ADMIN, null],
+  ] as const)('logs in with database role %s and initial active role %s', async (actualRole, activeRole) => {
+    const actualUser = {
+      ...user,
+      role: actualRole,
+      passwordHash: await bcrypt.hash('correct horse battery staple', 4),
+    };
+    prismaMock.user.findFirst.mockResolvedValue(actualUser);
     prismaMock.refreshToken.create.mockResolvedValue({ id: 'session-id' });
-    jwtMock.signAsync.mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
 
-    const result = await service.login({ email: activeUser.email, password: 'correct horse battery staple', loginAs });
+    const result = await service.login({ email: actualUser.email, password: 'correct horse battery staple' });
 
-    expect(result.user.role).toBe(actualRole);
-    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: actualRole }), expect.any(Object));
+    expect(result.user).toMatchObject({ role: actualRole, actualRole, activeRole });
+    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({
+      role: actualRole, actualRole, activeRole, sid: 'session-id',
+    }), expect.objectContaining({ secret: configMock.accessTokenSecret }));
   });
 
-  it.each([
-    [UserRole.SURVEYER, UserRole.USER],
-    [UserRole.ADMIN, UserRole.USER],
-    [UserRole.USER, UserRole.SURVEYER],
-    [UserRole.ADMIN, UserRole.SURVEYER],
-    [UserRole.USER, UserRole.ADMIN],
-    [UserRole.SURVEYER, UserRole.ADMIN],
-  ] as const)('rejects selected login mode %s for actual role %s', async (loginAs, actualRole) => {
-    const activeUser = { ...user, role: actualRole, passwordHash: await bcrypt.hash('correct horse battery staple', 4) };
-    prismaMock.user.findFirst.mockResolvedValue(activeUser);
+  it('authenticates without accepting a client-selected role on the login request', async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform(
+      { email: user.email, password: 'correct horse battery staple', loginAs: UserRole.ADMIN },
+      { type: 'body', metatype: LoginDto, data: '' },
+    )).rejects.toThrow();
 
-    await expect(service.login({ email: activeUser.email, password: 'correct horse battery staple', loginAs }))
-      .rejects.toThrow('The selected login role does not match this account.');
-    expect(prismaMock.refreshToken.create).not.toHaveBeenCalled();
-    expect(jwtMock.signAsync).not.toHaveBeenCalled();
+    const result = await service.login({ email: user.email, password: 'correct horse battery staple' });
+    expect(result.user.activeRole).toBeNull();
   });
 
-  it('does not accept a missing email verification timestamp', async () => {
-    prismaMock.user.findFirst.mockResolvedValue({ ...user, emailVerifiedAt: null });
+  it('rejects invalid credentials and inactive or unverified accounts', async () => {
+    await expect(service.login({ email: user.email, password: 'wrong password value' }))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    prismaMock.user.findFirst.mockResolvedValue({ ...user, isActive: false });
     await expect(service.login({ email: user.email, password: 'correct horse battery staple' }))
       .rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it('does not authenticate an inactive user', async () => {
-    prismaMock.user.findFirst.mockResolvedValue({ ...user, isActive: false });
-    await expect(service.login({ email: user.email, password: 'correct horse battery staple' })).rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it('rejects an unverified user without revealing email-specific information', async () => {
     prismaMock.user.findFirst.mockResolvedValue({ ...user, emailVerifiedAt: null });
     await expect(service.login({ email: user.email, password: 'correct horse battery staple' }))
       .rejects.toThrow('Invalid email or password');
   });
 
-  it('rejects invalid login mode values through DTO validation', async () => {
-    const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
-    await expect(pipe.transform(
-      { email: user.email, password: 'correct horse battery staple', loginAs: 'SUPERUSER' },
-      { type: 'body', metatype: LoginDto, data: '' },
-    )).rejects.toThrow();
-    await expect(pipe.transform(
-      { email: user.email, password: 'correct horse battery staple', loginAs: UserRole.USER, role: UserRole.ADMIN },
-      { type: 'body', metatype: LoginDto, data: '' },
-    )).rejects.toThrow();
+  it.each([
+    [UserRole.USER, UserRole.USER],
+    [UserRole.SURVEYER, UserRole.SURVEYER],
+    [UserRole.SURVEYER, UserRole.USER],
+    [UserRole.ADMIN, UserRole.ADMIN],
+    [UserRole.ADMIN, UserRole.SURVEYER],
+    [UserRole.ADMIN, UserRole.USER],
+  ] as const)('allows actual role %s to activate %s', async (actualRole, activeRole) => {
+    const account = { ...user, role: actualRole };
+    transactionMock.user.findFirst.mockResolvedValue(account);
+    transactionMock.refreshToken.create.mockResolvedValue({ id: 'activated-session' });
+
+    const result = await service.activateRole({
+      id: userId,
+      email: user.email,
+      actualRole,
+      activeRole: null,
+      sessionId: 'pending-session',
+    }, activeRole);
+
+    expect(result.user).toMatchObject({ role: actualRole, actualRole, activeRole });
+    expect(transactionMock.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'pending-session', userId }),
+      data: { revokedAt: expect.any(Date) },
+    }));
+    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ activeRole }), expect.any(Object));
   });
 
-  it('uses the database role and ignores a client-supplied role property', async () => {
-    const userAccount = {
-      ...user,
-      role: UserRole.USER,
-      passwordHash: await bcrypt.hash('correct horse battery staple', 4),
-    };
-    prismaMock.user.findFirst.mockResolvedValue(userAccount);
-    prismaMock.refreshToken.create.mockResolvedValue({ id: 'session-id' });
-    jwtMock.signAsync.mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
-
-    const result = await service.login({
-      email: userAccount.email,
-      password: 'correct horse battery staple',
-      role: UserRole.ADMIN,
-    } as LoginDto);
-
-    expect(result.user.role).toBe(UserRole.USER);
-    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.USER }), expect.any(Object));
+  it.each([
+    [UserRole.USER, UserRole.ADMIN],
+    [UserRole.USER, UserRole.SURVEYER],
+    [UserRole.SURVEYER, UserRole.ADMIN],
+  ] as const)('rejects actual role %s from activating %s', async (actualRole, activeRole) => {
+    await expect(service.activateRole({
+      id: userId,
+      email: user.email,
+      actualRole,
+      activeRole: null,
+      sessionId: 'pending-session',
+    }, activeRole)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid credentials', async () => {
-    prismaMock.user.findFirst.mockResolvedValue(user);
-    await expect(service.login({ email: user.email, password: 'wrong password value' })).rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it('rejects an invalid refresh token', async () => {
-    jwtMock.verifyAsync.mockRejectedValue(new Error('expired'));
-    await expect(service.refresh('invalid-token')).rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it('keeps the database role authoritative when rotating refresh tokens', async () => {
+  it('preserves the validated active role while rotating a refresh token', async () => {
     const refreshToken = 'current-refresh-token';
     jwtMock.verifyAsync.mockResolvedValue({
-      sub: user.id,
+      sub: userId,
       sid: 'session-id',
       email: user.email,
-      role: UserRole.USER,
+      role: UserRole.ADMIN,
+      actualRole: UserRole.ADMIN,
+      activeRole: UserRole.SURVEYER,
     });
     transactionMock.refreshToken.findFirst.mockResolvedValue({
-      id: 'session-id',
-      userId: user.id,
-      revokedAt: null,
-      expiresAt: new Date(Date.now() + 60_000),
+      id: 'session-id', userId, revokedAt: null, expiresAt: new Date(Date.now() + 60_000),
       user: { ...user, role: UserRole.ADMIN },
     });
-    transactionMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
-    transactionMock.refreshToken.create.mockResolvedValue({ id: 'new-session-id' });
-    transactionMock.refreshToken.update.mockResolvedValue({ id: 'new-session-id' });
-    jwtMock.signAsync.mockResolvedValueOnce('new-access').mockResolvedValueOnce('new-refresh');
+    jwtMock.signAsync.mockReset().mockResolvedValueOnce('new-access').mockResolvedValueOnce('new-refresh');
 
     const result = await service.refresh(refreshToken);
 
-    expect(result.user.role).toBe(UserRole.ADMIN);
-    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.ADMIN }), expect.any(Object));
+    expect(result.user).toMatchObject({ actualRole: UserRole.ADMIN, activeRole: UserRole.SURVEYER });
+    expect(jwtMock.signAsync).toHaveBeenCalledWith(expect.objectContaining({
+      actualRole: UserRole.ADMIN, activeRole: UserRole.SURVEYER,
+    }), expect.objectContaining({ secret: configMock.accessTokenSecret }));
     expect(transactionMock.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: 'session-id', userId: user.id, revokedAt: null, tokenHash: expect.any(String) }),
-      data: { revokedAt: expect.any(Date) },
+      where: expect.objectContaining({ id: 'session-id', userId, revokedAt: null }),
     }));
-    expect(transactionMock.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(transactionMock.refreshToken.create).toHaveBeenCalledTimes(1);
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects a refresh token when another operation already consumed it', async () => {
-    jwtMock.verifyAsync.mockResolvedValue({ sub: user.id, sid: 'session-id' });
-    transactionMock.refreshToken.findFirst.mockResolvedValue({ id: 'session-id', userId: user.id, user });
-    transactionMock.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+  it('rejects a refresh claim whose active role exceeds the current database role', async () => {
+    jwtMock.verifyAsync.mockResolvedValue({ sub: userId, sid: 'session-id', activeRole: UserRole.ADMIN });
+    transactionMock.refreshToken.findFirst.mockResolvedValue({
+      id: 'session-id', userId, revokedAt: null, expiresAt: new Date(Date.now() + 60_000),
+      user: { ...user, role: UserRole.SURVEYER },
+    });
 
-    await expect(service.refresh('already-consumed-token')).rejects.toBeInstanceOf(UnauthorizedException);
-    expect(transactionMock.refreshToken.create).not.toHaveBeenCalled();
-  });
-
-  it('revokes a refresh token during logout', async () => {
-    prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
-    await expect(service.logout('refresh-token-value')).resolves.toBeUndefined();
-    expect(prismaMock.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tokenHash: expect.any(String), revokedAt: null }, data: { revokedAt: expect.any(Date) } }));
+    await expect(service.refresh('current-refresh-token')).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(transactionMock.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 });

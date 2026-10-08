@@ -12,7 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../auth/AuthContext';
-import { dashboardPathByRole, isUserRole, type UserRole } from '../auth/types';
+import { dashboardPathByRole, isAuthUser } from '../auth/types';
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -23,7 +23,6 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loginAs, setLoginAs] = useState<UserRole | ''>('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -41,8 +40,8 @@ export function LoginPage() {
     );
   }
 
-  if (isAuthenticated && user && isUserRole(user.role)) {
-    return <Navigate to={dashboardPathByRole[user.role]} replace />;
+  if (isAuthenticated && user && isAuthUser(user)) {
+    return <Navigate to={user.activeRole ? dashboardPathByRole[user.activeRole] : '/select-role'} replace />;
   }
 
   async function handleSubmit(
@@ -53,10 +52,6 @@ export function LoginPage() {
     if (submittingRef.current) return;
 
     setError('');
-    if (!loginAs) {
-      setError(t('auth.selectRoleError'));
-      return;
-    }
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
       setError(t('auth.invalidEmail'));
       return;
@@ -70,8 +65,14 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const authenticatedUser = await login(email, password, loginAs, rememberMe);
-      navigate(dashboardPathByRole[authenticatedUser.role], { replace: true });
+      const authenticatedUser = await login(email, password, rememberMe);
+      if (!isAuthUser(authenticatedUser)) throw new Error('The server returned an invalid account role.');
+      navigate(
+        authenticatedUser.activeRole
+          ? dashboardPathByRole[authenticatedUser.activeRole]
+          : '/select-role',
+        { replace: true },
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : '';
       setError(message === 'Request failed' || !message ? t('auth.networkError') : message);
@@ -178,28 +179,6 @@ export function LoginPage() {
                 className="mt-7 space-y-5"
                 noValidate
               >
-                <div>
-                  <label htmlFor="login-as" className="mb-2 block text-sm font-semibold text-slate-800">
-                    {t('auth.loginAs')}
-                  </label>
-                  <select
-                    id="login-as"
-                    value={loginAs}
-                    onChange={(event) => {
-                      setLoginAs(event.target.value as UserRole | '');
-                      setError('');
-                    }}
-                    required
-                    disabled={isSubmitting}
-                    className="form-input h-12 w-full"
-                  >
-                    <option value="">{t('auth.selectLoginRole')}</option>
-                    <option value="USER">{t('auth.roleUser')}</option>
-                    <option value="SURVEYER">{t('auth.roleHead')}</option>
-                    <option value="ADMIN">{t('auth.roleAdmin')}</option>
-                  </select>
-                </div>
-
                 {/* Email */}
                 <div>
                   <label

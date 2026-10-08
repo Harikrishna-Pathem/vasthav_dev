@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
@@ -79,6 +79,7 @@ describe('Authentication API', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
     await app.init();
   });
 
@@ -152,12 +153,30 @@ describe('Authentication API', () => {
     await request(app.getHttpServer())
       .post('/auth/login')
       .send({ email: 'admin@example.com', password: 'correct horse battery staple', loginAs: 'USER' })
-      .expect(401)
-      .expect(({ body }) => {
-        expect(body.message).toBe('The selected login role does not match this account.');
-      });
+      .expect(400);
 
     await request(app.getHttpServer()).get('/auth/me').expect(401);
+  });
+
+  it('activates an allowed role through the authenticated session endpoint', async () => {
+    const loginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'admin@example.com', password: 'correct horse battery staple' })
+      .expect(200);
+
+    expect(loginResponse.body.user).toMatchObject({ actualRole: 'ADMIN', activeRole: null });
+    const activated = await request(app.getHttpServer())
+      .post('/auth/active-role')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken}`)
+      .send({ activeRole: 'SURVEYER' })
+      .expect(200);
+    expect(activated.body.user).toMatchObject({ actualRole: 'ADMIN', activeRole: 'SURVEYER' });
+
+    await request(app.getHttpServer())
+      .post('/auth/active-role')
+      .set('Authorization', `Bearer ${activated.body.accessToken}`)
+      .send({ activeRole: 'NOT_A_ROLE' })
+      .expect(400);
   });
 
   it('exposes the password reset request, verify, and reset endpoints', async () => {
