@@ -4,7 +4,9 @@ import { AuthProvider } from './auth/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleDashboardRedirect } from './components/RoleDashboardRedirect';
 import { AppShell } from './components/AppShell';
-import { DashboardPage } from './pages/DashboardPage';
+import { AdminDashboardPage } from './pages/dashboard/AdminDashboardPage';
+import { SurveyHeadDashboardPage } from './pages/dashboard/SurveyHeadDashboardPage';
+import { UserDashboardPage } from './pages/dashboard/UserDashboardPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SurveysPage } from './pages/surveys/SurveysPage';
@@ -39,13 +41,13 @@ export function App() {
             <Route element={<AppShell />}>
               <Route path="/dashboard" element={<RoleDashboardRedirect />} />
               <Route element={<ProtectedRoute allowedRoles={['USER']} />}>
-                <Route path="/dashboard/user" element={<DashboardPage />} />
+                <Route path="/dashboard/user" element={<UserDashboardPage />} />
               </Route>
               <Route element={<ProtectedRoute allowedRoles={['SURVEYER']} />}>
-                <Route path="/dashboard/head" element={<DashboardPage />} />
+                <Route path="/dashboard/head" element={<SurveyHeadDashboardPage />} />
               </Route>
               <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
-                <Route path="/dashboard/admin" element={<DashboardPage />} />
+                <Route path="/dashboard/admin" element={<AdminDashboardPage />} />
               </Route>
 
               <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SURVEYER']} />}>
